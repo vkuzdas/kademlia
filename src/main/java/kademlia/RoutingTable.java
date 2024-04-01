@@ -23,16 +23,16 @@ public class RoutingTable {
         }
     }
 
-    public void addNode(NodeReference node) {
-
-        // TODO: outsource to KBucket?
-        if (node.equals(owner))
-            return;
-
-        int index = getBucketIndex(node);
-        KBucket bucket = buckets.get(index);
-        bucket.addNode(node);
-    }
+//    public void addNode(NodeReference node) {
+//
+//        // TODO: outsource to KBucket?
+//        if (node.equals(owner))
+//            return;
+//
+//        int index = getBucketIndex(node);
+//        KBucket bucket = buckets.get(index);
+//        bucket.addNode(node);
+//    }
 
     private int getBucketIndex(NodeReference node) {
         BigInteger myId = owner.getDecimalId();

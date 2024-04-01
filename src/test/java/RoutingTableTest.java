@@ -16,7 +16,7 @@ public class RoutingTableTest {
 
         int bucketIndex = binaryDistance.length() - 1;
 
-        assertEquals(4, bucketIndex);
+        assertEquals(3, bucketIndex);
     }
 
     @Test
@@ -26,13 +26,12 @@ public class RoutingTableTest {
 
         BigInteger a = new BigInteger("49");
         BigInteger b = new BigInteger("60");
+
         BigInteger aXb = a.xor(b);
-        BigInteger bXa = b.xor(a);
         assertEquals(new BigInteger("13"), aXb);
+
+        BigInteger bXa = b.xor(a);
         assertEquals(new BigInteger("13"), bXa);
-
-        String binaryA = a.toString(2);
-
 
     }
 

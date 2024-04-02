@@ -1,5 +1,6 @@
 package kademlia;
 
+import java.time.Instant;
 import java.util.ArrayDeque;
 
 /**
@@ -7,13 +8,41 @@ import java.util.ArrayDeque;
  */
 public class KBucket {
     private final int MAX_SIZE;
-
+    private final NodeReference owner;
     private final ArrayDeque<NodeReference> nodes;
 
-    // TODO: should I add owner to prevent owner insertion on this level?
-    public KBucket(int k) {
+//    public KBucket(int k) {
+//        this.MAX_SIZE = k;
+//        nodes = new ArrayDeque<>();
+//    }
+
+    public KBucket(int k, NodeReference owner) {
         this.MAX_SIZE = k;
+        this.owner = owner;
         nodes = new ArrayDeque<>();
+    }
+
+    // most recently at the tail
+    public boolean add(NodeReference newNode) {
+
+        if (owner.equals(newNode)) return false;
+
+        newNode.setLastSeen(Instant.now());
+
+        if (nodes.contains(newNode)) {
+            nodes.remove(newNode);
+            nodes.addLast(newNode);
+            return true;
+        }
+
+        if (nodes.size() == MAX_SIZE)  {
+            nodes.removeFirst();
+            nodes.addLast(newNode);
+            return true;
+        }
+
+        nodes.addLast(newNode);
+        return true;
     }
 
     public boolean addTail(NodeReference node) {

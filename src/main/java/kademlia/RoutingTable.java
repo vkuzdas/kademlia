@@ -19,20 +19,15 @@ public class RoutingTable {
         this.owner = owner;
 
         for (int i = 0; i < SIZE; i++) {
-            buckets.add(new KBucket(K_PARAMETER));
+            buckets.add(new KBucket(K_PARAMETER, owner));
         }
     }
 
-//    public void addNode(NodeReference node) {
-//
-//        // TODO: outsource to KBucket?
-//        if (node.equals(owner))
-//            return;
-//
-//        int index = getBucketIndex(node);
-//        KBucket bucket = buckets.get(index);
-//        bucket.addNode(node);
-//    }
+    public void insert(NodeReference newNode) {
+        int index = getBucketIndex(newNode);
+        KBucket bucket = buckets.get(index);
+        bucket.add(newNode);
+    }
 
     private int getBucketIndex(NodeReference node) {
         BigInteger myId = owner.getDecimalId();

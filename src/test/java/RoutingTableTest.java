@@ -1,3 +1,6 @@
+import kademlia.KademliaNode;
+import kademlia.NodeReference;
+import kademlia.RoutingTable;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
@@ -5,6 +8,36 @@ import java.math.BigInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class RoutingTableTest {
+
+    private static int BASE_PORT = 10_000;
+    private static String LOCAL_IP = "localhost";
+
+
+    // 000001(1)
+    // 000100(4)
+    // 000101(5)
+    // 000110(6)
+    // 001100(12)
+    // 001101(13)
+    // 001111(15)
+    // 010000(16)
+    // 010010(18)
+    // 010011(19)
+    // 100010(34)
+    // 101011(43)
+    // 110001(49)
+    // 111100(60)
+    public void testRoutingTableInsert() {
+        KademliaNode.setAlpha(3);
+        KademliaNode.setK(4);
+        KademliaNode.setIdLength(6);
+
+        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT);
+        RoutingTable routingTable = new RoutingTable(6, 3, 4, owner);
+
+        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT + 1));
+    }
+
 
     @Test
     public void testDistance() {

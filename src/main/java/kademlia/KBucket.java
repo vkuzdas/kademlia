@@ -2,8 +2,6 @@ package kademlia;
 
 import java.time.Instant;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Each KBucket is kept sorted by time last seen: most-recently seen at the tail
@@ -61,10 +59,6 @@ public class KBucket {
             return true;
         }
         return false;
-    }
-
-    public List<NodeReference> toList() {
-        return new ArrayList<>(nodes);
     }
 
     public boolean contains(NodeReference node) {

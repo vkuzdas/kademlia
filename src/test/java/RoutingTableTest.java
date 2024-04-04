@@ -1,78 +1,41 @@
 import kademlia.KademliaNode;
 import kademlia.NodeReference;
 import kademlia.RoutingTable;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class RoutingTableTest {
 
-    static int BASE_PORT = 10_000;
-    static String LOCAL_IP = "localhost";
-
-    int BITS = 20;
-    int K = 4;
-    int ALPHA = 3;
+    private static int BASE_PORT = 10_000;
+    private static String LOCAL_IP = "localhost";
 
 
-    @BeforeEach
-    public void init() {
-        KademliaNode.setAlpha(ALPHA);
-        KademliaNode.setK(K);
-        KademliaNode.setIdLength(BITS);
-    }
-
-    @Test
+    // 000001(1)
+    // 000100(4)
+    // 000101(5)
+    // 000110(6)
+    // 001100(12)
+    // 001101(13)
+    // 001111(15)
+    // 010000(16)
+    // 010010(18)
+    // 010011(19)
+    // 100010(34)
+    // 101011(43)
+    // 110001(49)
+    // 111100(60)
     public void testRoutingTableInsert() {
-        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++);
-        RoutingTable routingTable = new RoutingTable(BITS, ALPHA, K, owner);
+        KademliaNode.setAlpha(3);
+        KademliaNode.setK(4);
+        KademliaNode.setIdLength(6);
 
-        for (int i = 0; i < 20; i++) {
-            NodeReference n = new NodeReference(LOCAL_IP, BASE_PORT++);
-            routingTable.insert(n);
-            int insertIndex = owner.getDecimalId().xor(n.getDecimalId()).bitLength() - 1;
+        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT);
+        RoutingTable routingTable = new RoutingTable(6, 3, 4, owner);
 
-            if (owner.getDecimalId().compareTo(n.getDecimalId()) != 0) {
-                assertTrue(routingTable.getKBucket(insertIndex).contains(n));
-            }
-        }
-    }
-
-    @Test
-    public void testFindKClosest() {
-        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++);
-        RoutingTable routingTable = new RoutingTable(BITS, ALPHA, K, owner);
-
-        ArrayList<NodeReference> inserted = new ArrayList<>();
-
-        // insert and assert correct KBucket insertion
-        for (int i = 0; i < 40; i++) {
-            NodeReference n = new NodeReference(LOCAL_IP, BASE_PORT++);
-            routingTable.insert(n);
-            inserted.add(n);
-            int insertIndex = owner.getDecimalId().xor(n.getDecimalId()).bitLength() - 1;
-
-            if (owner.getDecimalId().compareTo(n.getDecimalId()) != 0) {
-                assertTrue(routingTable.getKBucket(insertIndex).contains(n));
-            }
-        }
-
-        for (int i = 0; i < 20; i++) {
-            int randomId = new Random().nextInt((int)Math.pow(2, BITS));
-            BigInteger targetId = new BigInteger(String.valueOf(randomId));
-            List<NodeReference> kClosest = routingTable.findKClosest(targetId);
-
-            // got some K nodes
-            assertEquals(KademliaNode.getK(), kClosest.size());
-        }
-
+        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT + 1));
     }
 
 

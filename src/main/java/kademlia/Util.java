@@ -7,9 +7,6 @@ import java.security.NoSuchAlgorithmException;
 
 public class Util {
 
-    static int bits = 8;
-    static int K_PARAMETER = 5;
-
     /**
      * Calculate the SHA-1 hash of the input string and return the result as a BigInteger
      */
@@ -22,6 +19,7 @@ public class Util {
             return BigInteger.ONE.negate();
         }
 
+        int bits = KademliaNode.getIdLength();
         BigInteger lastId = BigInteger.valueOf(2L).pow(bits).add(BigInteger.ONE.negate()); // [0, 2^x-1]
         BigInteger hashedString = new BigInteger(1, md.digest(input.getBytes(StandardCharsets.UTF_8)));
 

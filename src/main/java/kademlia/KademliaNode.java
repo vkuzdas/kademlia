@@ -1,7 +1,17 @@
 package kademlia;
 
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import io.grpc.Server;
+import io.grpc.ServerBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import proto.Kademlia;
+import proto.KademliaServiceGrpc;
+
+import java.io.IOException;
+import java.math.BigInteger;
+
 public class KademliaNode {
 
     private static final Logger logger = LoggerFactory.getLogger(KademliaNode.class);
@@ -28,9 +38,21 @@ public class KademliaNode {
      */
     private static int K_PARAMETER = 4;
 
+    private final Server server;
+
+    private KademliaServiceGrpc.KademliaServiceBlockingStub blockingStub;
+    private KademliaServiceGrpc.KademliaServiceStub asyncStub;
+
+
+
+
     public KademliaNode(String ip, int port) {
         this.self = new NodeReference(ip, port);
         this.routingTable = new RoutingTable(ID_LENGTH, ALPHA_PARAMETER, K_PARAMETER, self);
+
+        server = ServerBuilder.forPort(port)
+                .addService(new KademliaNodeServer())
+                .build();
     }
 
     public static int getIdLength() {
@@ -65,4 +87,71 @@ public class KademliaNode {
         }
         KademliaNode.K_PARAMETER = k;
     }
+
+    ////////////////////////////////
+    ///  CLIENT-SIDE PROCESSING  ///
+    ////////////////////////////////
+
+    public void initKademlia() throws IOException {
+        startServer();
+        logger.debug("[{}]  started FIX", self);
+    }
+
+    private void startServer() throws IOException {
+        server.start();
+        logger.warn("[{}]  Server started, listening on {}", self, self.port);
+    }
+
+    public void shutdownKademliaNode() {
+        stopServer();
+    }
+
+    public void stopServer() {
+        if (server != null) {
+            server.shutdownNow();
+            logger.warn("Server stopped, listening on {}", self.port);
+        }
+    }
+
+    /**
+     * Kademlia Join
+     * 	kdyz joinuje U, musi mit kontakt na boostrap W
+     * 	U insertne W do spravneho KB
+     * 	U potom udela lookup svojeho ID
+     * 	U nakonec refreshne vsechny KB ktere jsou vzdalenejsi vice nez jeho nejblizsi neighbor
+     * 		- behem refreshe U plni svoje KB a insertuje sama sebe do ostatnich KB dle potreby
+     */
+    public void join(NodeReference bootstrap) throws IOException {
+        startServer();
+
+        // U insertne W do spravneho KB
+        routingTable.insert(bootstrap);
+
+        // prompt W to do lookup for an ID
+        //  The "self-lookup" will populate other nodes' k-buckets with the new node ID, and will populate the joining node's k-buckets with the nodes in the path between it and the bootstrap node.
+        ManagedChannel ch = ManagedChannelBuilder.forTarget(bootstrap.getAddress()).usePlaintext().build();
+        asyncStub = KademliaServiceGrpc.newStub(ch);
+        Kademlia.LookupRequest req = Kademlia.LookupRequest.newBuilder().setTargetId(self.getId().toString()).build();
+//        asyncStub.nodeLookup(req);
+
+
+    }
+
+    public void nodeLookup(BigInteger targetId) {
+
+    }
+
+
+
+    ////////////////////////////////
+    ///  SERVER-SIDE PROCESSING  ///
+    ////////////////////////////////
+    
+    /**
+     * Server-side of Kademlia node
+     */
+    private class KademliaNodeServer extends KademliaServiceGrpc.KademliaServiceImplBase {
+
+    }
+
 }

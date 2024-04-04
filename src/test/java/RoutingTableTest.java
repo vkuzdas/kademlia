@@ -1,41 +1,105 @@
+import kademlia.KBucket;
 import kademlia.KademliaNode;
 import kademlia.NodeReference;
 import kademlia.RoutingTable;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class RoutingTableTest {
 
-    private static int BASE_PORT = 10_000;
-    private static String LOCAL_IP = "localhost";
+    static int BASE_PORT = 10_000;
+    static String LOCAL_IP = "localhost";
+
+    int BITS = 20;
+    int K = 4;
+    int ALPHA = 3;
 
 
-    // 000001(1)
-    // 000100(4)
-    // 000101(5)
-    // 000110(6)
-    // 001100(12)
-    // 001101(13)
-    // 001111(15)
-    // 010000(16)
-    // 010010(18)
-    // 010011(19)
-    // 100010(34)
-    // 101011(43)
-    // 110001(49)
-    // 111100(60)
+    @BeforeEach
+    public void init() {
+        KademliaNode.setAlpha(ALPHA);
+        KademliaNode.setK(K);
+        KademliaNode.setIdLength(BITS);
+    }
+
+    @Test
+    public void testInsertOverflow() {
+        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++);
+        owner.setId(BigInteger.ZERO);
+        RoutingTable routingTable = new RoutingTable(BITS, ALPHA, K, owner);
+
+        int idIncrement = 16; // 16 = 2^4, therefore only 4th KBucket is in our interest
+        NodeReference dropped = new NodeReference(LOCAL_IP, BASE_PORT++);
+        dropped.setId(owner.getId().add(BigInteger.valueOf(idIncrement++)));
+        routingTable.insert(dropped);
+
+        // fill KBucket with K nodes so that the first node is dropped
+        for (int i = 0; i < K; i++) {
+            NodeReference n = new NodeReference(LOCAL_IP, BASE_PORT++);
+            n.setId(owner.getId().add(BigInteger.valueOf(idIncrement++)));
+            routingTable.insert(n);
+        }
+
+        int insertIndex = owner.getId().xor(BigInteger.valueOf(idIncrement)).bitLength() - 1;
+        KBucket targetKbucket = routingTable.getKBucket(insertIndex);
+
+        assertFalse(targetKbucket.contains(dropped));
+
+    }
+
+    @Test
     public void testRoutingTableInsert() {
-        KademliaNode.setAlpha(3);
-        KademliaNode.setK(4);
-        KademliaNode.setIdLength(6);
+        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++);
+        RoutingTable routingTable = new RoutingTable(BITS, ALPHA, K, owner);
 
-        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT);
-        RoutingTable routingTable = new RoutingTable(6, 3, 4, owner);
+        for (int i = 0; i < 20; i++) {
+            NodeReference n = new NodeReference(LOCAL_IP, BASE_PORT++);
+            routingTable.insert(n);
+            int insertIndex = owner.getId().xor(n.getId()).bitLength() - 1;
 
-        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT + 1));
+            if (owner.getId().compareTo(n.getId()) != 0) {
+                assertTrue(routingTable.getKBucket(insertIndex).contains(n));
+            }
+        }
+    }
+
+    @Test
+    public void testFindKClosest() {
+        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++);
+        RoutingTable routingTable = new RoutingTable(BITS, ALPHA, K, owner);
+
+        ArrayList<NodeReference> inserted = new ArrayList<>();
+
+        // insert and assert correct KBucket insertion
+        for (int i = 0; i < 40; i++) {
+            NodeReference n = new NodeReference(LOCAL_IP, BASE_PORT++);
+            routingTable.insert(n);
+            inserted.add(n);
+            int insertIndex = owner.getId().xor(n.getId()).bitLength() - 1;
+
+            if (owner.getId().compareTo(n.getId()) != 0) {
+                assertTrue(routingTable.getKBucket(insertIndex).contains(n));
+            }
+        }
+
+        for (int i = 0; i < 20; i++) {
+            int randomId = new Random().nextInt((int)Math.pow(2, BITS));
+            BigInteger targetId = new BigInteger(String.valueOf(randomId));
+            List<NodeReference> kClosest = routingTable.findKClosest(targetId);
+
+            // got some K nodes
+            assertEquals(KademliaNode.getK(), kClosest.size());
+        }
+
     }
 
 

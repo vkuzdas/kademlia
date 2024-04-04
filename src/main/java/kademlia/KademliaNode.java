@@ -4,6 +4,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import proto.Kademlia;
@@ -11,6 +12,11 @@ import proto.KademliaServiceGrpc;
 
 import java.io.IOException;
 import java.math.BigInteger;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.stream.Collectors;
+
+import static proto.Kademlia.LookupRequest.Type.JOIN;
 
 public class KademliaNode {
 
@@ -128,17 +134,104 @@ public class KademliaNode {
         routingTable.insert(bootstrap);
 
         // prompt W to do lookup for an ID
-        //  The "self-lookup" will populate other nodes' k-buckets with the new node ID, and will populate the joining node's k-buckets with the nodes in the path between it and the bootstrap node.
+        // TODO:
+        //  The "self-lookup" will populate other nodes'
+        //  k-buckets with the new node ID, and will
+        //  populate the joining node's k-buckets with
+        //  the nodes in the path between it and the bootstrap node.
         ManagedChannel ch = ManagedChannelBuilder.forTarget(bootstrap.getAddress()).usePlaintext().build();
-        asyncStub = KademliaServiceGrpc.newStub(ch);
-        Kademlia.LookupRequest req = Kademlia.LookupRequest.newBuilder().setTargetId(self.getId().toString()).build();
-//        asyncStub.nodeLookup(req);
+        blockingStub = KademliaServiceGrpc.newBlockingStub(ch);
+        Kademlia.LookupRequest request = Kademlia.LookupRequest.newBuilder()
+                .setTargetId(self.getId().toString())
+                .setType(JOIN)
+                .build();
+
+        Kademlia.LookupResponse response = blockingStub.promptNodeLookup(request);
 
 
     }
 
-    public void nodeLookup(BigInteger targetId) {
+    /**
+     * Locate K globally-closest nodes to the targetId
+     */
+    public List<NodeReference> nodeLookup(BigInteger targetId) {
 
+        List<NodeReference> k_best = routingTable.findKClosest(targetId);
+
+        while (true) { // while better results are coming
+
+            Stack<NodeReference> toQuery = new Stack<>();
+            toQuery.addAll(k_best);
+
+            int calls = Math.min(ALPHA_PARAMETER, toQuery.size());
+            CountDownLatch latch = new CountDownLatch(calls);
+
+            List<NodeReference> found = Collections.synchronizedList(new ArrayList<>());
+
+            // query all K nodes eventually
+            while (!toQuery.isEmpty()) {
+
+                // do max. alpha concurrent calls
+                for (int i = 0; i < calls; i++) {
+                    NodeReference curr = toQuery.pop();
+
+                    ManagedChannel channel = ManagedChannelBuilder.forTarget(curr.getAddress()).usePlaintext().build();
+                    Kademlia.FindNodeRequest request = Kademlia.FindNodeRequest.newBuilder().setTargetId(targetId.toString()).build();
+                    KademliaServiceGrpc.newStub(channel).findNode(request, new StreamObserver<Kademlia.FindNodeResponse>() {
+                        @Override
+                        public void onNext(Kademlia.FindNodeResponse findNodeResponse) {
+                            findNodeResponse.getKClosestList().stream().map(NodeReference::new).forEach(found::add);
+                        }
+
+                        @Override
+                        public void onError(Throwable throwable) {
+                            // TODO: remove ?
+                            logger.error("Error while finding node", throwable);
+                        }
+
+                        @Override
+                        public void onCompleted() {
+                            // since the response is unary, this function may be redundant
+                            logger.debug("Node lookup completed");
+                        }
+                    });
+                }
+                try {
+                    latch.await();
+                } catch (InterruptedException e) {
+                    logger.error("Waiting for async calls interrupted", e);
+                }
+            }
+            // done concurrently asking all K best nodes
+
+            // termination check: if closer nodes were found, continue
+            BigInteger currBestDist = k_best.stream()
+                    .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
+                    .limit(1)
+                    .map(n -> targetId.subtract(n.getId()).abs())
+                    .findFirst().get();
+
+            BigInteger newBestDist = found.stream()
+                    .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
+                    .limit(1)
+                    .map(n -> targetId.subtract(n.getId()).abs())
+                    .findFirst().get();
+
+            if (currBestDist.compareTo(newBestDist) > 0) {
+                break;
+            }
+
+            // update k_best: remove duplicates, sort by distance to target, keep only K best
+            found.addAll(k_best);
+
+            k_best = found.stream()
+                    .distinct()
+                    .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
+                    .limit(K_PARAMETER)
+                    .collect(Collectors.toList());
+        }
+
+        return k_best;
     }
 
 
@@ -152,6 +245,40 @@ public class KademliaNode {
      */
     private class KademliaNodeServer extends KademliaServiceGrpc.KademliaServiceImplBase {
 
+
+        @Override
+        public void promptNodeLookup(Kademlia.LookupRequest request, StreamObserver<Kademlia.LookupResponse> responseObserver) {
+            BigInteger targetId = new BigInteger(request.getTargetId());
+            List<NodeReference> kClosest = nodeLookup(targetId);
+        }
+
+        @Override
+        public void findNode(Kademlia.FindNodeRequest request, StreamObserver<Kademlia.FindNodeResponse> responseObserver) {
+            BigInteger targetId = new BigInteger(request.getTargetId());
+            List<NodeReference> kClosest = routingTable.findKClosest(targetId);
+
+            Kademlia.FindNodeResponse.Builder response = Kademlia.FindNodeResponse.newBuilder();
+            kClosest.forEach(node -> {
+                Kademlia.NodeReference.Builder nodeBuilder = Kademlia.NodeReference.newBuilder()
+                        .setIp(node.getIp())
+                        .setPort(node.getPort())
+                        .setId(node.getId().toString());
+                response.addKClosest(nodeBuilder);
+            });
+
+            responseObserver.onNext(response.build());
+            responseObserver.onCompleted();
+        }
+
+        @Override
+        public void ping(Kademlia.Empty request, StreamObserver<Kademlia.Empty> responseObserver) {
+            super.ping(request, responseObserver);
+        }
     }
+
+
+
+
+
 
 }

@@ -20,12 +20,25 @@ message LookupResponse {
 message NodeReference {
   string ip = 1;
   int32 port = 2;
+  string id = 3;
 }
-
 
 message Empty {}
 
+message FindNodeRequest {
+  string targetId = 1;
+}
+
+message FindNodeResponse {
+  repeated NodeReference kClosest = 1;
+}
+
+
 service KademliaService {
-  rpc NodeLookup(LookupRequest) returns (LookupResponse) {}
+  rpc PromptNodeLookup(LookupRequest) returns (LookupResponse) {}
+
+  rpc FindNode(FindNodeRequest) returns (FindNodeResponse) {}
+//  rpc FindValue(FindValueRequest) returns (FindValueResponse) {}
+//  rpc Store(StoreRequest) returns (Empty) {}
   rpc Ping(Empty) returns (Empty) {}
 }

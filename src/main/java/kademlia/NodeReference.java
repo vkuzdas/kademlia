@@ -66,7 +66,7 @@ public class NodeReference {
     public String toString() {
         return
 //                ip + ":" +
-                        port + ":" + id + ":" + getId();
+                        port + ":" + id;
     }
 
     @Override

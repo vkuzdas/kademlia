@@ -7,22 +7,33 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class RoutingTable {
-    private final int SIZE;
+    private final int MAX_SIZE;
     private final int ALPHA_PARAMETER;
     private final int K_PARAMETER;
     private final NodeReference owner;
     List<KBucket> buckets = new ArrayList<>();
     private final ReentrantLock lock = new ReentrantLock();
+    private int size; // TODO: decrement
 
-    public RoutingTable(int size, int alpha, int k, NodeReference owner) {
-        this.SIZE = size;
+    public RoutingTable(int maxSize, int alpha, int k, NodeReference owner) {
+        this.MAX_SIZE = maxSize;
         this.ALPHA_PARAMETER = alpha;
         this.K_PARAMETER = k;
+        this.size = 0;
 
         this.owner = owner;
 
-        for (int i = 0; i < SIZE; i++) {
+        for (int i = 0; i < MAX_SIZE; i++) {
             buckets.add(new KBucket(K_PARAMETER, owner));
+        }
+    }
+
+    public int getSize() {
+        lock.lock();
+        try {
+            return size;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -48,7 +59,7 @@ public class RoutingTable {
 
             ArrayList<NodeReference> res = new ArrayList<>(targetBucket.toList());
 
-            while (indexUp != SIZE && indexDown != 0) {
+            while (indexUp != MAX_SIZE && indexDown != 0) {
                 indexUp++;
                 indexDown--;
 
@@ -57,7 +68,7 @@ public class RoutingTable {
                 if (indexDown >= 0)
                     closestCandidates.addAll(getKBucket(indexDown).toList());
 
-                if (indexUp < SIZE)
+                if (indexUp < MAX_SIZE)
                     closestCandidates.addAll(getKBucket(indexUp).toList());
 
                 // sort by difference, add the remaining closest elements
@@ -80,7 +91,12 @@ public class RoutingTable {
             if (owner.equals(newNode)) return;
             int index = getBucketIndex(newNode.getId());
             KBucket bucket = buckets.get(index);
-            bucket.add(newNode);
+
+            boolean inserted = bucket.add(newNode);
+
+            if (inserted) {
+                size++;
+            }
         } finally {
             lock.unlock();
         }

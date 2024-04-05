@@ -6,7 +6,8 @@ option java_package = "proto";
 
 message LookupRequest {
   string targetId = 1;
-  Type type = 2;
+  NodeReference joiningNode = 2;
+  Type type = 3;
 
   enum Type {
     JOIN = 0;
@@ -27,6 +28,8 @@ message Empty {}
 
 message FindNodeRequest {
   string targetId = 1;
+  NodeReference joiningNode = 2;
+  NodeReference sender = 3;
 }
 
 message FindNodeResponse {

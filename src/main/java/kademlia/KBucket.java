@@ -25,12 +25,12 @@ public class KBucket {
         nodes = new ArrayDeque<>();
     }
 
-    // most recently at the tail
+    /**
+     * Insert most recently seen at the tail/end
+     */
     public boolean add(NodeReference newNode) {
 
         if (owner.equals(newNode)) return false;
-
-        newNode.setLastSeen(Instant.now());
 
         if (nodes.contains(newNode)) {
             nodes.remove(newNode);

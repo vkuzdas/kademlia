@@ -95,7 +95,7 @@ public class RoutingTable {
         }
     }
 
-    private int getBucketIndex(BigInteger targetId) {
+    public int getBucketIndex(BigInteger targetId) {
         lock.lock();
         try {
             BigInteger distance = owner.getId().xor(targetId);

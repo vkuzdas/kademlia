@@ -14,7 +14,6 @@ public class NodeReference {
     public final String ip;
     public final int port;
     private /*final*/ BigInteger id;
-    private Instant lastSeen;
 
     public NodeReference(String ip, int port) {
         this.ip = ip;
@@ -34,16 +33,11 @@ public class NodeReference {
         this.id = new BigInteger(nodeReference.getId());
     }
 
-    public void setLastSeen(Instant lastSeen) {
-        this.lastSeen = lastSeen;
-    }
-
-    public Instant getLastSeen() {
-        return lastSeen;
-    }
-
-    public void updateLastSeenNow() {
-        lastSeen = Instant.now();
+    public Kademlia.NodeReference toProto() {
+        return Kademlia.NodeReference.newBuilder()
+                .setIp(ip)
+                .setPort(port)
+                .setId(id.toString()).build();
     }
 
     public BigInteger getId() {

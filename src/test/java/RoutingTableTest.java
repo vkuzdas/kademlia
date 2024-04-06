@@ -14,22 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class RoutingTableTest {
-
-    static int BASE_PORT = 10_000;
-    static String LOCAL_IP = "localhost";
-
-    int BITS = 20;
-    int K = 4;
-    int ALPHA = 3;
-
-
-    @BeforeEach
-    public void init() {
-        KademliaNode.setAlpha(ALPHA);
-        KademliaNode.setK(K);
-        KademliaNode.setIdLength(BITS);
-    }
+public class RoutingTableTest extends BaseTest {
 
     @Test
     public void testInsertOverflow() {

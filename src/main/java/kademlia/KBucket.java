@@ -1,9 +1,7 @@
 package kademlia;
 
-import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -14,10 +12,6 @@ public class KBucket {
     private final NodeReference owner;
     private final ArrayDeque<NodeReference> nodes;
 
-//    public KBucket(int k) {
-//        this.MAX_SIZE = k;
-//        nodes = new ArrayDeque<>();
-//    }
 
     public KBucket(int k, NodeReference owner) {
         this.MAX_SIZE = k;
@@ -35,7 +29,7 @@ public class KBucket {
         if (nodes.contains(newNode)) {
             nodes.remove(newNode);
             nodes.addLast(newNode);
-            return true;
+            return false;
         }
 
         if (nodes.size() == MAX_SIZE)  {
@@ -62,6 +56,10 @@ public class KBucket {
             return true;
         }
         return false;
+    }
+
+    public int getSize() {
+        return nodes.size();
     }
 
     public List<NodeReference> toList() {

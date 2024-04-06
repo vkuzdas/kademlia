@@ -39,10 +39,8 @@ public class RoutingTable {
 
     /**
      * Response to FIND_NODE RPC
-     * Recepient returns k nodes it knows about closest to the target ID
+     * Recipient returns k nodes it knows about closest to the target ID
      */
-    // assumption: pokud full -> vratim K (tzn pokud je targetId na okraji, nevratim nutne ty skutecne nejblizsi)
-    //      pokud not-full, vratim ty skutecne nejblizsi z okolnich
     public List<NodeReference> findKClosest(BigInteger targetId) {
         int index = getBucketIndex(targetId);
 

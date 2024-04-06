@@ -75,6 +75,11 @@ public class KademliaNode {
                 .build();
     }
 
+    @VisibleForTesting
+    public RoutingTable getRoutingTable() {
+        return routingTable;
+    }
+
     public NodeReference getNodeReference() {
         return self;
     }

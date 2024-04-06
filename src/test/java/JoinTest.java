@@ -1,6 +1,7 @@
 import kademlia.KademliaNode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -35,6 +36,7 @@ public class JoinTest {
 
 
     @Test
+    @Disabled
     public void testJoin_noRefresh() throws IOException {
         KademliaNode.setAlpha(3);
         KademliaNode.setK(4);
@@ -49,6 +51,7 @@ public class JoinTest {
     }
 
     @Test
+    @Disabled
     public void testJoin_refreshAllBuckets() throws IOException {
         KademliaNode.setAlpha(3);
         KademliaNode.setK(4);

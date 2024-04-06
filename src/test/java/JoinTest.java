@@ -36,7 +36,6 @@ public class JoinTest {
 
 
     @Test
-    @Disabled
     public void testJoin_noRefresh() throws IOException {
         KademliaNode.setAlpha(3);
         KademliaNode.setK(4);
@@ -46,7 +45,7 @@ public class JoinTest {
         boostrap.initKademlia();
 
         // bootstrap falls into joiner's last k-bucket -> there is no refresh done
-        KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("2").pow(19).add(BigInteger.ONE));
+        KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ONE);
         joiner.join(boostrap.getNodeReference());
     }
 

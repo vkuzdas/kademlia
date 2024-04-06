@@ -50,7 +50,6 @@ public class JoinTest {
     }
 
     @Test
-    @Disabled
     public void testJoin_refreshAllBuckets() throws IOException {
         KademliaNode.setAlpha(3);
         KademliaNode.setK(4);

@@ -76,31 +76,30 @@ public class MoreNodeJoinTest extends BaseTest {
         }
     }
 
-//    // FIXME
-//    @Test
-//    public void testFour_joinChained() throws IOException {
-//        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("0"));
-//        runningNodes.add(bootstrap);
-//        bootstrap.initKademlia();
-//
-//        KademliaNode joiner1 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("1"));
-//        runningNodes.add(joiner1);
-//        joiner1.join(bootstrap.getNodeReference());
-//
-//        KademliaNode joiner2 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("2"));
-//        runningNodes.add(joiner2);
-//        joiner2.join(joiner1.getNodeReference());
-//
-//        KademliaNode joiner3 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("3"));
-//        runningNodes.add(joiner3);
-//        joiner3.join(joiner2.getNodeReference());
-//
-//
-//        for(KademliaNode node : runningNodes) {
-//            assertEquals(3, node.getRoutingTable().getSize());
-//            assertEquals(3, countAllRoutinTableEntries(node));
-//        }
-//    }
+    @Test
+    public void testFour_joinChained() throws IOException {
+        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("0"));
+        runningNodes.add(bootstrap);
+        bootstrap.initKademlia();
+
+        KademliaNode joiner1 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("1"));
+        runningNodes.add(joiner1);
+        joiner1.join(bootstrap.getNodeReference());
+
+        KademliaNode joiner2 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("2"));
+        runningNodes.add(joiner2);
+        joiner2.join(joiner1.getNodeReference());
+
+        KademliaNode joiner3 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("3"));
+        runningNodes.add(joiner3);
+        joiner3.join(joiner2.getNodeReference());
+
+
+        for(KademliaNode node : runningNodes) {
+            assertEquals(3, node.getRoutingTable().getSize());
+            assertEquals(3, countAllRoutinTableEntries(node));
+        }
+    }
 //
 //
 //    // FIXME

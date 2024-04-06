@@ -204,20 +204,17 @@ public class KademliaNode {
 
         while (true) { // while better results are coming
 
-            k_best.remove(self); // do not query self
-            List<NodeReference> toQuery = new ArrayList<>(k_best);
-
-            Set<NodeReference> foundInOneIteration = multicastFindNode(toQuery, targetId, joiningNode);
+            Set<NodeReference> foundInOneIteration = multicastFindNode(new ArrayList<>(k_best), targetId, joiningNode);
 
             if (joiningNode != null) {
                 allFoundNodes.addAll(foundInOneIteration);
             }
 
-            // termination check: if closer nodes were found, continue
-            BigInteger currBestDist = getMaxDistance(k_best, targetId);
-            BigInteger newBestDist = getMaxDistance(foundInOneIteration, targetId);
+            BigInteger currBest = getBestDistance(k_best, targetId);
+            BigInteger newBest = getBestDistance(foundInOneIteration, targetId);
 
-            if (currBestDist == null || newBestDist == null || currBestDist.compareTo(newBestDist) > 0) {
+            // Terminate when same or worse node found
+            if (currBest == null || newBest == null || newBest.compareTo(currBest) <= 0) {
                 break;
             }
 
@@ -240,7 +237,7 @@ public class KademliaNode {
         return k_best;
     }
 
-    private BigInteger getMaxDistance(Collection<NodeReference> collection, BigInteger targetId) {
+    private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
         return collection.stream()
                 .map(n -> targetId.subtract(n.getId()).abs())
                 .min(Comparator.naturalOrder())
@@ -252,7 +249,7 @@ public class KademliaNode {
      * Returns all nodes found during the lookup
      */
     private Set<NodeReference> multicastFindNode(List<NodeReference> toQuery, BigInteger targetId, Kademlia.NodeReference joiningNode) {
-
+        toQuery.remove(self); // do not query self
         Set<NodeReference> foundInOneIteration = new HashSet<>();
 
         while (!toQuery.isEmpty()) {

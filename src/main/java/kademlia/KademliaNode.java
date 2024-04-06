@@ -173,10 +173,10 @@ public class KademliaNode {
         // refresh all KB further away than the bootstrap's KB (refresh = lookup for random id in bucket range)
         // Note: some sources suggest to refresh all KB
         int bootstrapIndex = routingTable.getBucketIndex(bootstrap.getId());
-        logger.trace("[{}]  JOIN - initiating refresh", self);
+        logger.trace("[{}]  JOIN - initiating refresh from {}th KB", self, bootstrapIndex);
         for (int i = bootstrapIndex+1; i < ID_LENGTH; i++) {
-            logger.trace("[{}]  REFRESH - refreshing my {}th k-bucket", self, i);
             BigInteger rangeStart = BigInteger.valueOf(2).pow(i);
+            logger.trace("[{}]  JOIN - refresh: looking up {}", self, rangeStart);
             List<NodeReference> kBestInRange = nodeLookup(rangeStart, self.toProto());
 
             // nodeLookup with specified joiningNode returns all nodes found during the lookup
@@ -194,7 +194,6 @@ public class KademliaNode {
     private List<NodeReference> nodeLookup(BigInteger targetId, Kademlia.NodeReference joiningNode) {
         logger.trace("[{}]  initiating nodeLookup", self);
 
-
         if (routingTable.getSize() == 0) {
             logger.trace("[{}]  My routing table is empty", self);
             return new ArrayList<>();
@@ -205,108 +204,104 @@ public class KademliaNode {
 
         while (true) { // while better results are coming
 
-            Stack<NodeReference> toQuery = new Stack<>();
-            toQuery.addAll(k_best);
+            k_best.remove(self); // do not query self
+            List<NodeReference> toQuery = new ArrayList<>(k_best);
 
-            int calls = Math.min(ALPHA_PARAMETER, toQuery.size());
-            CountDownLatch latch = new CountDownLatch(calls);
-
-            List<NodeReference> found = Collections.synchronizedList(new ArrayList<>());
-
-            // query all K nodes eventually
-            while (!toQuery.isEmpty()) {
-                logger.trace("[{}]  initiating alpha async calls", self);
-                // do max. alpha concurrent calls
-                for (int i = 0; i < calls; i++) {
-                    NodeReference curr = toQuery.pop();
-
-                    ManagedChannel channel = ManagedChannelBuilder.forTarget(curr.getAddress()).usePlaintext().build();
-                    Kademlia.FindNodeRequest request = Kademlia.FindNodeRequest.newBuilder()
-                            .setTargetId(targetId.toString())
-                            .setSender(self.toProto())
-                            .setJoiningNode(joiningNode)
-                            .build();
-                    KademliaServiceGrpc.newStub(channel).findNode(request, new StreamObserver<Kademlia.FindNodeResponse>() {
-                        @Override
-                        public void onNext(Kademlia.FindNodeResponse findNodeResponse) {
-                            findNodeResponse.getKClosestList().stream().map(NodeReference::new).forEach(found::add);
-                        }
-
-                        @Override
-                        public void onError(Throwable throwable) {
-                            // TODO: remove node ?
-                            logger.error("[{}]  Error while finding node", self, throwable);
-                            latch.countDown();
-                            channel.shutdown();
-                        }
-
-                        @Override
-                        public void onCompleted() {
-                            // since the response is unary, this function may be redundant
-                            logger.debug("[{}]  Node lookup completed", self);
-                            latch.countDown();
-                            channel.shutdown();
-                        }
-                    });
-                }
-
-                try {
-                    latch.await();
-                } catch (InterruptedException e) {
-                    logger.error("[{}]  Waiting for async calls interrupted", self, e);
-                }
-
-            }
-            // done concurrently asking all K best nodes
-            logger.trace("[{}]  All async calls completed", self);
+            Set<NodeReference> foundInOneIteration = multicastFindNode(toQuery, targetId, joiningNode);
 
             if (joiningNode != null) {
-                allFoundNodes.addAll(found);
+                allFoundNodes.addAll(foundInOneIteration);
             }
 
             // termination check: if closer nodes were found, continue
-            Optional<BigInteger> currBestDist = k_best.stream()
-                    .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
-                    .limit(1)
-                    .map(n -> targetId.subtract(n.getId()).abs())
-                    .findFirst();
+            BigInteger currBestDist = getMaxDistance(k_best, targetId);
+            BigInteger newBestDist = getMaxDistance(foundInOneIteration, targetId);
 
-            Optional<BigInteger> newBestDist = found.stream()
-                    .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
-                    .limit(1)
-                    .map(n -> targetId.subtract(n.getId()).abs())
-                    .findFirst();
-
-            if (currBestDist.isPresent() && newBestDist.isPresent()) {
-                if (currBestDist.get().compareTo(newBestDist.get()) > 0) {
-                    logger.trace("[{}]  Lookup terminated", self);
-                    break;
-                }
-            } else {
-                logger.trace("[{}]  Lookup terminated", self);
+            if (currBestDist == null || newBestDist == null || currBestDist.compareTo(newBestDist) > 0) {
                 break;
             }
 
-            logger.trace("[{}]  Lookup continues ({} is newBestDist)", self, newBestDist);
-
             // update k_best: remove duplicates, sort by distance to target, keep only K best
-            found.addAll(k_best);
+            foundInOneIteration.addAll(k_best);
 
-            k_best = found.stream()
-                    .distinct()
+            k_best = foundInOneIteration.stream()
                     .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
                     .limit(K_PARAMETER)
                     .collect(Collectors.toList());
         }
 
         if (joiningNode != null) {
-            // all nodes found during the lookup, all nodes into which joiningNode was inserted to
+            logger.trace("[{}]  Node lookup finished (KB was not full)", self);
+            // all nodes found during the lookup = all nodes into which joiningNode was inserted to
             return new ArrayList<>(allFoundNodes);
         }
 
+        logger.trace("[{}]  Node lookup finished (whole KB returned)", self);
         return k_best;
     }
 
+    private BigInteger getMaxDistance(Collection<NodeReference> collection, BigInteger targetId) {
+        return collection.stream()
+                .map(n -> targetId.subtract(n.getId()).abs())
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+    }
+
+    /**
+     * Makes at most ALPHA concurrent calls (depends on the size of toQuery)
+     * Returns all nodes found during the lookup
+     */
+    private Set<NodeReference> multicastFindNode(List<NodeReference> toQuery, BigInteger targetId, Kademlia.NodeReference joiningNode) {
+
+        Set<NodeReference> foundInOneIteration = new HashSet<>();
+
+        while (!toQuery.isEmpty()) {
+            int calls = Math.min(ALPHA_PARAMETER, toQuery.size());
+            CountDownLatch latch = new CountDownLatch(calls);
+            Set<NodeReference> found = Collections.synchronizedSet(new HashSet<>());
+
+            for (int i = 0; i < calls; i++) {
+                NodeReference curr = toQuery.remove(toQuery.size() - 1);
+
+                ManagedChannel channel = ManagedChannelBuilder.forTarget(curr.getAddress()).usePlaintext().build();
+                Kademlia.FindNodeRequest request = Kademlia.FindNodeRequest.newBuilder()
+                        .setTargetId(targetId.toString())
+                        .setSender(self.toProto())
+                        .setJoiningNode(joiningNode)
+                        .build();
+                KademliaServiceGrpc.newStub(channel).findNode(request, new StreamObserver<Kademlia.FindNodeResponse>() {
+                    @Override
+                    public void onNext(Kademlia.FindNodeResponse findNodeResponse) {
+                        findNodeResponse.getKClosestList().stream().map(NodeReference::new).forEach(found::add);
+                    }
+
+                    @Override
+                    public void onError(Throwable throwable) {
+                        // TODO: remove node ?
+                        logger.error("[{}]  Error while finding node: {}", self, throwable.toString());
+                        latch.countDown();
+                        channel.shutdown();
+                    }
+
+                    @Override
+                    public void onCompleted() {
+                        // since the response is unary, this function may be redundant
+                        latch.countDown();
+                        channel.shutdown();
+                    }
+                });
+            }
+
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                logger.error("[{}]  Waiting for async calls interrupted", self, e);
+            }
+
+            foundInOneIteration.addAll(found);
+        }
+        return foundInOneIteration;
+    }
 
 
     ////////////////////////////////

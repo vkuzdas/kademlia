@@ -1,5 +1,8 @@
 package kademlia;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -7,6 +10,7 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class RoutingTable {
+    private static final Logger logger = LoggerFactory.getLogger(RoutingTable.class);
     private final int MAX_SIZE;
     private final int ALPHA_PARAMETER;
     private final int K_PARAMETER;
@@ -108,15 +112,13 @@ public class RoutingTable {
     }
 
     public int getBucketIndex(BigInteger targetId) {
-        lock.lock();
-        try {
-            BigInteger distance = owner.getId().xor(targetId);
+        if (owner.getId().compareTo(targetId) == 0)
+            return 0;
 
-            // returns the index of highest non-zero bit of binary representation
-            return distance.bitLength() - 1;
-        } finally {
-            lock.unlock();
-        }
+        BigInteger distance = owner.getId().xor(targetId);
+
+        // returns the index of highest non-zero bit of binary representation
+        return distance.bitLength() - 1;
     }
 
 

@@ -33,19 +33,16 @@ public class RoutingTableTest {
 
     @Test
     public void testInsertOverflow() {
-        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++);
-        owner.setId(BigInteger.ZERO);
+        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
         RoutingTable routingTable = new RoutingTable(BITS, ALPHA, K, owner);
 
         int idIncrement = 16; // 16 = 2^4, therefore only 4th KBucket is in our interest
-        NodeReference dropped = new NodeReference(LOCAL_IP, BASE_PORT++);
-        dropped.setId(owner.getId().add(BigInteger.valueOf(idIncrement++)));
+        NodeReference dropped = new NodeReference(LOCAL_IP, BASE_PORT++, owner.getId().add(BigInteger.valueOf(idIncrement++)));
         routingTable.insert(dropped);
 
         // fill KBucket with K nodes so that the first node is dropped
         for (int i = 0; i < K; i++) {
-            NodeReference n = new NodeReference(LOCAL_IP, BASE_PORT++);
-            n.setId(owner.getId().add(BigInteger.valueOf(idIncrement++)));
+            NodeReference n = new NodeReference(LOCAL_IP, BASE_PORT++, owner.getId().add(BigInteger.valueOf(idIncrement++)));
             routingTable.insert(n);
         }
 
@@ -69,6 +66,22 @@ public class RoutingTableTest {
             if (owner.getId().compareTo(n.getId()) != 0) {
                 assertTrue(routingTable.getKBucket(insertIndex).contains(n));
             }
+        }
+    }
+
+    @Test
+    public void testFindKClosest_refresh() {
+
+        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
+        RoutingTable routingTable = new RoutingTable(BITS, ALPHA, K, owner);
+
+        NodeReference joiner = new NodeReference(LOCAL_IP, BASE_PORT++, BigInteger.ONE);
+        routingTable.insert(joiner);
+
+        for (int i = 0; i < 20; i++) {
+            BigInteger rangeStart = BigInteger.valueOf(2).pow(i);
+            List<NodeReference> kBestInRange = routingTable.findKClosest(rangeStart);
+            assertEquals(1, kBestInRange.size());
         }
     }
 

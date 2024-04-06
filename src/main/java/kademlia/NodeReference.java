@@ -13,7 +13,7 @@ import java.time.Instant;
 public class NodeReference {
     public final String ip;
     public final int port;
-    private /*final*/ BigInteger id;
+    private final BigInteger id;
 
     public NodeReference(String ip, int port) {
         this.ip = ip;
@@ -21,6 +21,7 @@ public class NodeReference {
         this.id = Util.getId(getAddress());
     }
 
+    @VisibleForTesting
     public NodeReference(String ip, int port, BigInteger id) {
         this.ip = ip;
         this.port = port;
@@ -56,10 +57,10 @@ public class NodeReference {
         return port;
     }
 
-    @VisibleForTesting
-    public void setId(BigInteger id) {
-        this.id = id;
-    }
+//    @VisibleForTesting
+//    public void setId(BigInteger id) {
+//        this.id = id;
+//    }
 
 
     @Override

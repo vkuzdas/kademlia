@@ -54,28 +54,26 @@ public class RoutingTable {
                 return targetBucket.toList();
             }
 
-            int indexUp = index;
-            int indexDown = index;
-
+            // else keep merging up/down buckets
+            int shift = 1;
             ArrayList<NodeReference> res = new ArrayList<>(targetBucket.toList());
 
-            while (indexUp != MAX_SIZE && indexDown != 0) {
-                indexUp++;
-                indexDown--;
+            while (shift <= Math.max(index, MAX_SIZE - index)) {
 
                 ArrayList<NodeReference> closestCandidates = new ArrayList<>();
 
-                if (indexDown >= 0)
-                    closestCandidates.addAll(getKBucket(indexDown).toList());
+                if (index - shift >= 0)
+                    closestCandidates.addAll(getKBucket(index - shift).toList());
 
-                if (indexUp < MAX_SIZE)
-                    closestCandidates.addAll(getKBucket(indexUp).toList());
+                if (index + shift < MAX_SIZE)
+                    closestCandidates.addAll(getKBucket(index + shift).toList());
 
                 // sort by difference, add the remaining closest elements
                 closestCandidates.stream()
                         .sorted(Comparator.comparing(nodeReference -> targetId.subtract(nodeReference.getId()).abs()))
                         .limit(K_PARAMETER - res.size())
                         .forEach(res::add);
+                shift++;
             }
 
             return res; // there is less than K nodes

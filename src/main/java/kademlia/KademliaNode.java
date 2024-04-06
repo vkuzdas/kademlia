@@ -1,5 +1,6 @@
 package kademlia;
 
+import com.google.common.annotations.VisibleForTesting;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
@@ -50,7 +51,20 @@ public class KademliaNode {
     private KademliaServiceGrpc.KademliaServiceStub asyncStub;
 
 
+    /**
+     * There is high probability that new Kad node is inserted in the last KB
+     * which means there would be no refresh. <br>
+     * We need to set custom id for testing purposes.
+     */
+    @VisibleForTesting
+    public KademliaNode(String ip, int port, BigInteger id) {
+        this.self = new NodeReference(ip, port, id);
+        this.routingTable = new RoutingTable(ID_LENGTH, ALPHA_PARAMETER, K_PARAMETER, self);
 
+        server = ServerBuilder.forPort(port)
+                .addService(new KademliaNodeServer())
+                .build();
+    }
 
     public KademliaNode(String ip, int port) {
         this.self = new NodeReference(ip, port);
@@ -104,7 +118,6 @@ public class KademliaNode {
 
     public void initKademlia() throws IOException {
         startServer();
-        logger.debug("[{}]  started FIX", self);
     }
 
     private void startServer() throws IOException {
@@ -148,15 +161,16 @@ public class KademliaNode {
                 .setType(JOIN)
                 .build();
 
-        logger.trace("[{}]  Join - prompting node lookup", self);
+        logger.trace("[{}]  JOIN - prompting boostrap node [{}] for myId lookup", self, bootstrap);
         Kademlia.LookupResponse response = blockingStub.promptNodeLookup(request);
         response.getKClosestList().forEach(n -> routingTable.insert(new NodeReference(n)));
 
         // refresh all KB further away than the bootstrap's KB (refresh = lookup for random id in bucket range)
         // Note: some sources suggest to refresh all KB
         int bootstrapIndex = routingTable.getBucketIndex(bootstrap.getId());
-        logger.trace("[{}]  Join - initiating refresh", self);
+        logger.trace("[{}]  JOIN - initiating refresh", self);
         for (int i = bootstrapIndex+1; i < ID_LENGTH; i++) {
+            logger.trace("[{}]  REFRESH - refreshing my {}th k-bucket", self, i);
             BigInteger rangeStart = BigInteger.valueOf(2).pow(i);
             List<NodeReference> kBestInRange = nodeLookup(rangeStart, self.toProto());
 
@@ -173,6 +187,8 @@ public class KademliaNode {
      *      as well as insert join node into other k-buckets
      */
     private List<NodeReference> nodeLookup(BigInteger targetId, Kademlia.NodeReference joiningNode) {
+        logger.trace("[{}]  initiating nodeLookup", self);
+
 
         if (routingTable.getSize() == 0) {
             logger.trace("[{}]  My routing table is empty", self);
@@ -194,7 +210,7 @@ public class KademliaNode {
 
             // query all K nodes eventually
             while (!toQuery.isEmpty()) {
-
+                logger.trace("[{}]  initiating alpha async calls", self);
                 // do max. alpha concurrent calls
                 for (int i = 0; i < calls; i++) {
                     NodeReference curr = toQuery.pop();
@@ -202,6 +218,7 @@ public class KademliaNode {
                     ManagedChannel channel = ManagedChannelBuilder.forTarget(curr.getAddress()).usePlaintext().build();
                     Kademlia.FindNodeRequest request = Kademlia.FindNodeRequest.newBuilder()
                             .setTargetId(targetId.toString())
+                            .setSender(self.toProto())
                             .setJoiningNode(joiningNode)
                             .build();
                     KademliaServiceGrpc.newStub(channel).findNode(request, new StreamObserver<Kademlia.FindNodeResponse>() {
@@ -212,43 +229,55 @@ public class KademliaNode {
 
                         @Override
                         public void onError(Throwable throwable) {
-                            // TODO: remove ?
+                            // TODO: remove node ?
                             logger.error("[{}]  Error while finding node", self, throwable);
+                            latch.countDown();
+                            channel.shutdown();
                         }
 
                         @Override
                         public void onCompleted() {
                             // since the response is unary, this function may be redundant
                             logger.debug("[{}]  Node lookup completed", self);
+                            latch.countDown();
+                            channel.shutdown();
                         }
                     });
                 }
+
                 try {
                     latch.await();
                 } catch (InterruptedException e) {
                     logger.error("[{}]  Waiting for async calls interrupted", self, e);
                 }
+
             }
             // done concurrently asking all K best nodes
+            logger.trace("[{}]  All async calls completed", self);
 
             if (joiningNode != null) {
                 allFoundNodes.addAll(found);
             }
 
             // termination check: if closer nodes were found, continue
-            BigInteger currBestDist = k_best.stream()
+            Optional<BigInteger> currBestDist = k_best.stream()
                     .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
                     .limit(1)
                     .map(n -> targetId.subtract(n.getId()).abs())
-                    .findFirst().get();
+                    .findFirst();
 
-            BigInteger newBestDist = found.stream()
+            Optional<BigInteger> newBestDist = found.stream()
                     .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
                     .limit(1)
                     .map(n -> targetId.subtract(n.getId()).abs())
-                    .findFirst().get();
+                    .findFirst();
 
-            if (currBestDist.compareTo(newBestDist) > 0) {
+            if (currBestDist.isPresent() && newBestDist.isPresent()) {
+                if (currBestDist.get().compareTo(newBestDist.get()) > 0) {
+                    logger.trace("[{}]  Lookup terminated", self);
+                    break;
+                }
+            } else {
                 logger.trace("[{}]  Lookup terminated", self);
                 break;
             }
@@ -287,11 +316,12 @@ public class KademliaNode {
 
         @Override
         public void promptNodeLookup(Kademlia.LookupRequest request, StreamObserver<Kademlia.LookupResponse> responseObserver) {
-            logger.trace("[{}]  Node lookup initiated from [{}]", self, request.getJoiningNode());
+            NodeReference joiningNode = new NodeReference(request.getJoiningNode());
+            logger.trace("[{}]  Node lookup initiated from [{}]", self, joiningNode);
 
             List<NodeReference> kClosest = nodeLookup(new BigInteger(request.getTargetId()), request.getJoiningNode());
 
-            routingTable.insert(new NodeReference(request.getJoiningNode()));
+            routingTable.insert(joiningNode);
 
             Kademlia.LookupResponse.Builder response = Kademlia.LookupResponse.newBuilder()
                     .addAllKClosest(kClosest.stream().map(NodeReference::toProto).collect(Collectors.toList()));
@@ -302,6 +332,7 @@ public class KademliaNode {
 
         @Override
         public void findNode(Kademlia.FindNodeRequest request, StreamObserver<Kademlia.FindNodeResponse> responseObserver) {
+            logger.trace("[{}]  Received FIND_NODE rpc", self);
 
             BigInteger targetId = new BigInteger(request.getTargetId());
             List<NodeReference> kClosest = routingTable.findKClosest(targetId);
@@ -320,6 +351,8 @@ public class KademliaNode {
                         .setId(node.getId().toString());
                 response.addKClosest(nodeBuilder);
             });
+
+            logger.trace("[{}]  Sending FIND_NODE response", self);
 
             responseObserver.onNext(response.build());
             responseObserver.onCompleted();

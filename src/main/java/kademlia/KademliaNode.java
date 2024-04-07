@@ -166,14 +166,14 @@ public class KademliaNode {
                 .setType(JOIN)
                 .build();
 
-        logger.trace("[{}]  JOIN - prompting boostrap node [{}] for myId lookup", self, bootstrap);
+        logger.debug("[{}]  JOIN - prompting boostrap node [{}] for myId lookup", self, bootstrap);
         Kademlia.LookupResponse response = blockingStub.promptNodeLookup(request);
         response.getKClosestList().forEach(n -> routingTable.insert(new NodeReference(n)));
 
         // refresh all KB further away than the bootstrap's KB (refresh = lookup for random id in bucket range)
         // Note: some sources suggest to refresh all KB
         int bootstrapIndex = routingTable.getBucketIndex(bootstrap.getId());
-        logger.trace("[{}]  JOIN - initiating refresh from {}th KB", self, bootstrapIndex);
+        logger.debug("[{}]  JOIN - initiating refresh from {}th KB", self, bootstrapIndex);
         for (int i = bootstrapIndex+1; i < ID_LENGTH; i++) {
             BigInteger rangeStart = BigInteger.valueOf(2).pow(i);
             logger.trace("[{}]  JOIN - refresh: looking up {}", self, rangeStart);

@@ -56,13 +56,15 @@ public class MoreNodeJoinTest extends BaseTest {
         assertEquals(2, countAllRoutinTableEntries(joiner2));
     }
 
+
+
     @Test
-    public void testFour_joinBootstrap() throws IOException {
+    public void testFive_joinBoostrap() throws IOException {
         KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
         runningNodes.add(bootstrap);
         bootstrap.initKademlia();
 
-        int couple = 4;
+        int couple = 5;
 
         for (int i = 1; i < couple; i++) {
             KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger(""+i));
@@ -74,49 +76,84 @@ public class MoreNodeJoinTest extends BaseTest {
             assertEquals(couple-1, node.getRoutingTable().getSize());
             assertEquals(couple-1, countAllRoutinTableEntries(node));
         }
+
     }
 
     @Test
-    public void testFour_joinChained() throws IOException {
-        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("0"));
+    public void testFive_joinChained() throws IOException {
+        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
         runningNodes.add(bootstrap);
         bootstrap.initKademlia();
 
-        KademliaNode joiner1 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("1"));
-        runningNodes.add(joiner1);
-        joiner1.join(bootstrap.getNodeReference());
+        NodeReference prev = bootstrap.getNodeReference();
 
-        KademliaNode joiner2 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("2"));
-        runningNodes.add(joiner2);
-        joiner2.join(joiner1.getNodeReference());
+        int couple = 5;
 
-        KademliaNode joiner3 = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("3"));
-        runningNodes.add(joiner3);
-        joiner3.join(joiner2.getNodeReference());
-
+        for (int i = 1; i < couple; i++) {
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger(""+i));
+            runningNodes.add(joiner);
+            joiner.join(prev);
+            prev = joiner.getNodeReference();
+        }
 
         for(KademliaNode node : runningNodes) {
-            assertEquals(3, node.getRoutingTable().getSize());
-            assertEquals(3, countAllRoutinTableEntries(node));
+            assertEquals(couple-1, node.getRoutingTable().getSize());
+            assertEquals(couple-1, countAllRoutinTableEntries(node));
         }
     }
-//
-//
-//    // FIXME
-//    @Test
-//    public void testFive_joinBoostrap() throws IOException {
-//        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
-//        runningNodes.add(bootstrap);
-//        bootstrap.initKademlia();
-//
-//        int couple = 5;
-//
-//        for (int i = 1; i < couple; i++) {
-//            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger(""+i));
-//            runningNodes.add(joiner);
-//            joiner.join(bootstrap.getNodeReference());
+
+    /**
+     * <b>Not all nodes have whole network in their Routing Table:</b>
+     * for example, when 10_009 joins, bootstrap sends FIND_NODE to nodes [10_005,..,10_008]
+     * therefore 10_009 will be only inserted into those routing tables
+     */
+    @Test
+    public void testTen_joinBoostrap() throws IOException {
+        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
+        runningNodes.add(bootstrap);
+        bootstrap.initKademlia();
+
+        int couple = 10;
+
+        for (int i = 1; i < couple; i++) {
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger(""+i));
+            runningNodes.add(joiner);
+            joiner.join(bootstrap.getNodeReference());
+        }
+
+        // not sure if there is a general consistent assert to be made
+//        for(KademliaNode node : runningNodes) {
+//            assertEquals(couple-1, node.getRoutingTable().getSize());
+//            assertEquals(couple-1, countAllRoutinTableEntries(node));
 //        }
-//    }
+    }
+
+    @Test
+    public void testTen_joinChained() throws IOException {
+        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
+        runningNodes.add(bootstrap);
+        bootstrap.initKademlia();
+
+        NodeReference prev = bootstrap.getNodeReference();
+
+        int couple = 10;
+
+        for (int i = 1; i < couple; i++) {
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger(""+i));
+            runningNodes.add(joiner);
+            joiner.join(prev);
+            prev = joiner.getNodeReference();
+        }
+    }
+
+    /**
+     * If there is more than K nodes that were inserted into a bucket, it drops the first inserted
+     */
+    // TODO
+    @Test
+    public void testKBucketDropsNode() {
+
+    }
 
 
     /**

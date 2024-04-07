@@ -158,8 +158,8 @@ public class KademliaNode {
         routingTable.insert(bootstrap);
 
         // prompt W to do lookup for an ID
-        ManagedChannel ch = ManagedChannelBuilder.forTarget(bootstrap.getAddress()).usePlaintext().build();
-        blockingStub = KademliaServiceGrpc.newBlockingStub(ch);
+        ManagedChannel channel = ManagedChannelBuilder.forTarget(bootstrap.getAddress()).usePlaintext().build();
+        blockingStub = KademliaServiceGrpc.newBlockingStub(channel);
         Kademlia.LookupRequest request = Kademlia.LookupRequest.newBuilder()
                 .setTargetId(self.getId().toString())
                 .setJoiningNode(self.toProto())
@@ -168,6 +168,7 @@ public class KademliaNode {
 
         logger.debug("[{}]  JOIN - prompting boostrap node [{}] for myId lookup", self, bootstrap);
         Kademlia.LookupResponse response = blockingStub.promptNodeLookup(request);
+        channel.shutdown();
         response.getKClosestList().forEach(n -> routingTable.insert(new NodeReference(n)));
 
         // refresh all KB further away than the bootstrap's KB (refresh = lookup for random id in bucket range)

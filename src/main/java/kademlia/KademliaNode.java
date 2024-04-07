@@ -215,7 +215,7 @@ public class KademliaNode {
             BigInteger newBest = getBestDistance(foundInOneIteration, targetId);
 
             // Terminate when same or worse node found
-            if (currBest == null || newBest == null || newBest.compareTo(currBest) <= 0) {
+            if (currBest == null || newBest == null || newBest.compareTo(currBest) >= 0) {
                 break;
             }
 

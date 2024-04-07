@@ -288,6 +288,7 @@ public class KademliaNode {
                         channel.shutdown();
                     }
                 });
+                channel.shutdown();
             }
 
             try {

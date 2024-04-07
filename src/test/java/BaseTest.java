@@ -1,10 +1,14 @@
 import kademlia.KademliaNode;
+import kademlia.RoutingTable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 
 public class BaseTest {
+    protected static final Logger logger = LoggerFactory.getLogger(BaseTest.class);
     protected static int BASE_PORT = 10_000;
     protected static String LOCAL_IP = "localhost";
     protected int BITS = 20;

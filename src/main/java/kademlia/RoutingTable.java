@@ -1,5 +1,6 @@
 package kademlia;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -119,6 +120,20 @@ public class RoutingTable {
 
         // returns the index of highest non-zero bit of binary representation
         return distance.bitLength() - 1;
+    }
+
+    @VisibleForTesting
+    public void print() {
+        lock.lock();
+        try {
+            logger.info("[{}]  Routing table: ", owner);
+            for (int i = 0; i < MAX_SIZE; i++) {
+                if (buckets.get(i).getSize() == 0) continue;
+                logger.info("   Bucket " + i + ": " + buckets.get(i).toList());
+            }
+        } finally {
+            lock.unlock();
+        }
     }
 
 

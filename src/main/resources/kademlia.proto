@@ -36,12 +36,37 @@ message FindNodeResponse {
   repeated NodeReference kClosest = 1;
 }
 
+message RetrieveRequest {
+  string key = 1;
+  NodeReference sender = 3;
+}
+
+message RetrieveResponse {
+  string value = 1;
+  Status status = 2;
+}
+
+message StoreRequest {
+  string key = 1;
+  string value = 2;
+  NodeReference sender = 3;
+}
+
+message StoreResponse {
+  Status status = 1;
+}
+
+enum Status {
+  SUCCESS = 0;
+  NOT_FOUND = 1;
+  ERROR = 2;
+}
 
 service KademliaService {
   rpc PromptNodeLookup(LookupRequest) returns (LookupResponse) {}
 
   rpc FindNode(FindNodeRequest) returns (FindNodeResponse) {}
-//  rpc FindValue(FindValueRequest) returns (FindValueResponse) {}
-//  rpc Store(StoreRequest) returns (Empty) {}
+  rpc Retrieve(RetrieveRequest) returns (RetrieveResponse) {}
+  rpc Store(StoreRequest) returns (StoreResponse) {}
   rpc Ping(Empty) returns (Empty) {}
 }

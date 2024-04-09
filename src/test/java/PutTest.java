@@ -7,16 +7,18 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import static kademlia.Util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class PutTest extends BaseTest {
 
-    // TODO:
-    // ~~ 1. Test put non-ovelapping regions ~~
-    // 2. Test put + join
-    // 3. Test put + leave
+    /* TODO:
+       ~~ 1. Test put non-ovelapping regions ~~
+       2. Test put + join
+       3. Test put + leave
+    */
 
     @Test
     public void testPut_singleNode() throws IOException {
@@ -50,56 +52,70 @@ public class PutTest extends BaseTest {
     }
 
     @Test
-    public void testPut_nonOverlapping() throws IOException {
+    public void testPut_nonOverlapping_random() throws IOException {
+        KademliaNode.setIdLength(10);
+        BITS = 10;
+        String lowKey = "key4";  // keyHash= 114 ∈ [2^6, 2^7)
+        String highKey = "key7"; // keyhash= 696 ∈ [2^9, 2^10)
+
         List<NodeReference> lowRange = new ArrayList<>();
         List<NodeReference> highRange = new ArrayList<>();
 
-        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("2").pow(15));
-        lowRange.add(bootstrap.getNodeReference());
-        runningNodes.add(bootstrap);
-        bootstrap.initKademlia();
+        // place nodes around lowKey
+        for (int i = 0; i < K; i++) {
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, Util.getId(lowKey).add(BigInteger.valueOf(i+1)));
 
-        // low nodes
-        for (int i = 1; i <= K; i++) {
-            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("2").pow(15).add(BigInteger.valueOf(i)));
-            joiner.join(bootstrap.getNodeReference());
+            if (runningNodes.isEmpty()) {
+                joiner.initKademlia();
+            } else {
+                joiner.join(getRandomRunningNode().getNodeReference());
+            }
+
             lowRange.add(joiner.getNodeReference());
             runningNodes.add(joiner);
         }
 
-        // high nodes
+        // place nodes around highKey
         for (int i = 0; i < K; i++) {
-            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, new BigInteger("2").pow(19).add(BigInteger.valueOf(i)));
-            joiner.join(bootstrap.getNodeReference());
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, Util.getId(highKey).add(BigInteger.valueOf(i+1)));
+
+            joiner.join(getRandomRunningNode().getNodeReference());
+
             highRange.add(joiner.getNodeReference());
             runningNodes.add(joiner);
         }
 
-        String lowKey = "key3"; // keyHash=885733 ∈ [2^19, 2^20)
-        String highKey = "key1"; // keyhash= 40604 ∈ [2^15, 2^16)
+        // no matter the chosen node, key should be placed onto appropriate nodes
+        getRandomRunningNode().put(highKey, "highValue");
+        getRandomRunningNode().put(lowKey, "lowValue");
 
-        bootstrap.put(highKey, "highKey");
-
-        bootstrap.put(lowKey, "lowKey");
-
-        List<Pair> expectHighRange = bootstrap.get("key1");
-        List<Pair> expectLowRange = bootstrap.get("key3");
+        // no matter the chosen node, it should return nodes placed in appropriate distance from polled key
+        List<Pair> expectHighRange = getRandomRunningNode().get(highKey);
+        List<Pair> expectLowRange = getRandomRunningNode().get(lowKey);
 
 
-        expectLowRange.forEach(p -> assertTrue(lowRange.contains(p.node)));
-        expectHighRange.forEach(p -> assertTrue(highRange.contains(p.node)));
 
-        for (int i = 1; i < K+1; i++) {
-            assertEquals("lowKey", runningNodes.get(i).getLocalData().get(Util.getId(lowKey)));
+        expectLowRange.forEach(p -> {
+            assertTrue(lowRange.contains(p.node));
+            assertEquals("lowValue", p.value);
+        });
+        expectHighRange.forEach(p -> {
+            assertTrue(highRange.contains(p.node));
+            assertEquals("highValue", p.value);
+        });
+
+        for (int i = 0; i < K; i++) {
+            assertEquals("lowValue", runningNodes.get(i).getLocalData().get(Util.getId(lowKey)));
             assertNull(runningNodes.get(i).getLocalData().get(Util.getId(highKey)));
         }
-        for (int i = K+1; i < 2*K+1; i++) {
-            assertEquals("highKey", runningNodes.get(i).getLocalData().get(Util.getId(highKey)));
+        for (int i = K; i < 2*K; i++) {
+            assertEquals("highValue", runningNodes.get(i).getLocalData().get(Util.getId(highKey)));
             assertNull(runningNodes.get(i).getLocalData().get(Util.getId(lowKey)));
         }
-
-        assertNull(bootstrap.getLocalData().get(Util.getId(highKey)));
-        assertNull(bootstrap.getLocalData().get(Util.getId(lowKey)));
     }
 
+
+    private KademliaNode getRandomRunningNode() {
+        return runningNodes.get(new Random().nextInt(runningNodes.size()));
+    }
 }

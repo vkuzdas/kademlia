@@ -114,8 +114,4 @@ public class PutTest extends BaseTest {
         }
     }
 
-
-    private KademliaNode getRandomRunningNode() {
-        return runningNodes.get(new Random().nextInt(runningNodes.size()));
-    }
 }

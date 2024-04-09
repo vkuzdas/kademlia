@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Random;
 
 public class BaseTest {
     protected static final Logger logger = LoggerFactory.getLogger(BaseTest.class);
@@ -34,5 +35,9 @@ public class BaseTest {
             node.shutdownKademliaNode();
         }
         runningNodes.clear();
+    }
+
+    protected KademliaNode getRandomRunningNode() {
+        return runningNodes.get(new Random().nextInt(runningNodes.size()));
     }
 }

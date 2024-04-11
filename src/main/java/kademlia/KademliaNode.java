@@ -15,11 +15,9 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static kademlia.Util.*;
-import static proto.Kademlia.LookupRequest.Type.JOIN;
 
 public class KademliaNode {
 
@@ -30,7 +28,6 @@ public class KademliaNode {
     /**
      * Local data storage
      */
-//    private final NavigableMap<BigInteger, String> localData = new TreeMap<>();
     private final Map<BigInteger, String> localData = Collections.synchronizedMap(new HashMap<>());
 
 
@@ -163,7 +160,6 @@ public class KademliaNode {
 
         logger.warn("[{}]  Joining KadNetwork!", self);
 
-        // TODO: local data must be split if there is better K-nodes for a given key!
         routingTable.insert(bootstrap);
 
         // prompt bootstrap to do lookup for an ID
@@ -171,14 +167,13 @@ public class KademliaNode {
         Kademlia.LookupRequest request = Kademlia.LookupRequest.newBuilder()
                 .setTargetId(self.getId().toString())
                 .setJoiningNode(self.toProto())
-                .setType(JOIN)
                 .build();
 
         logger.debug("[{}]  JOIN - prompting boostrap node [{}] for myId lookup", self, bootstrap);
         Kademlia.LookupResponse response = KademliaServiceGrpc.newBlockingStub(channel).promptNodeLookup(request);
         channel.shutdown();
 
-        response.getKClosestList().forEach(n -> routingTable.insert(new NodeReference(n)));
+        response.getFoundNodesList().forEach(n -> routingTable.insert(new NodeReference(n)));
 
         // refresh all KB further away than the B's KB (refresh = lookup for random id in bucket range)
         // Note: some sources suggest to refresh all KB
@@ -196,12 +191,28 @@ public class KademliaNode {
         logger.warn("[{}]  Joined KadNetwork!", self);
     }
 
+    private void getKeys(List<NodeReference> myClosest) {
+        // TODO: can be done in parallel
+        myClosest.forEach(node -> {
+            ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
+            Kademlia.MoveKeysRequest request = Kademlia.MoveKeysRequest.newBuilder()
+                    .setJoiningNodeId(self.getId().toString())
+                    .setSenderIp(self.getIp())
+                    .setSenderPort(self.getPort())
+                    .build();
+            Kademlia.MoveKeysResponse response = KademliaServiceGrpc.newBlockingStub(channel).moveKeys(request);
+            channel.shutdown();
+            response.getEntriesList().forEach(e -> localData.put(new BigInteger(e.getKey()), e.getValue()));
+        });
+    }
+
     /**
      * Locate K globally-closest nodes to the targetId <br>
      * If joiningNode is not null, all nodes found during the lookup are returned
      * @param joiningNode - node that is joining the network, null if it's a regular lookup
      * @return List of nodes that were found during the lookup <br>
      */
+    // TODO: think about joining node case separation
     private List<NodeReference> nodeLookup(BigInteger targetId, Kademlia.NodeReference joiningNode) {
         logger.trace("[{}]  initiating nodeLookup", self);
 
@@ -402,9 +413,13 @@ public class KademliaNode {
      */
     private class KademliaNodeServer extends KademliaServiceGrpc.KademliaServiceImplBase {
 
-        // TODO: When a Kademlia node receives any message (re-quest or reply) from another node, it updates the
+        // TODO: When a Kademlia node receives any message (request or reply) from another node, it updates the
         //  appropriate k-bucket for the sender’s node ID
 
+
+        /**
+         * Initiated on joining node, sent to Booststrap node
+         */
         @Override
         public void promptNodeLookup(Kademlia.LookupRequest request, StreamObserver<Kademlia.LookupResponse> responseObserver) {
             NodeReference joiningNode = new NodeReference(request.getJoiningNode());
@@ -415,12 +430,25 @@ public class KademliaNode {
             routingTable.insert(joiningNode);
 
             Kademlia.LookupResponse.Builder response = Kademlia.LookupResponse.newBuilder()
-                    .addAllKClosest(kClosest.stream().map(NodeReference::toProto).collect(Collectors.toList()));
+                    .addAllFoundNodes(kClosest.stream().map(NodeReference::toProto).collect(Collectors.toList()));
 
             responseObserver.onNext(response.build());
             responseObserver.onCompleted();
         }
 
+        @Override
+        public void moveKeys(Kademlia.MoveKeysRequest request, StreamObserver<Kademlia.MoveKeysResponse> responseObserver) {
+            Kademlia.MoveKeysResponse.Builder response = Kademlia.MoveKeysResponse.newBuilder();
+            extractKeys(new BigInteger(request.getJoiningNodeId()))
+                    .forEach(entry -> {
+                        response.addEntries(Kademlia.Entry.newBuilder()
+                                .setKey(entry.getKey().toString())
+                                .setValue(entry.getValue())
+                                .build());
+            });
+            responseObserver.onNext(response.build());
+            responseObserver.onCompleted();
+        }
 
         /**
          * Instructs a node to store a key-value pair for later retrieval

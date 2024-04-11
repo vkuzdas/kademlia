@@ -13,6 +13,7 @@ import proto.KademliaServiceGrpc;
 
 import java.io.IOException;
 import java.math.BigInteger;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
@@ -29,6 +30,11 @@ public class KademliaNode {
      * Local data storage
      */
     private final Map<BigInteger, String> localData = Collections.synchronizedMap(new HashMap<>());
+
+    /**
+     * Republishing timers
+     */
+    private final Map<BigInteger, Timer> localDataRepublishTimers = Collections.synchronizedMap(new HashMap<>());
 
 
     /**
@@ -53,6 +59,17 @@ public class KademliaNode {
 
     private final Server server;
 
+    /**
+     * Time after which the original publisher must republish a key/value pair
+     */
+    // TODO: opt-1, opt-2
+    private static Duration republishInterval = Duration.ofMinutes(15);
+
+
+    @VisibleForTesting
+    public static void setRepublishInterval(Duration duration) {
+        republishInterval = duration;
+    }
 
     /**
      * There is high probability that new Kad node is inserted in the last KB
@@ -357,7 +374,7 @@ public class KademliaNode {
         BigInteger keyHash = getId(key);
 
         if(routingTable.getSize() == 0) {
-            localData.put(keyHash, value);
+            putAndScheduleRepublish(keyHash, value);
             return;
         }
 
@@ -373,6 +390,29 @@ public class KademliaNode {
             Kademlia.StoreResponse response = KademliaServiceGrpc.newBlockingStub(channel).store(request);
             channel.shutdown();
         });
+    }
+
+    private void putAndScheduleRepublish(BigInteger keyHash, String value) {
+        localData.put(keyHash, value);
+        TimerTask republishTask = new TimerTask() {
+            @Override
+            public void run() {
+                logger.trace("[{}]  Republishing key {}", self, keyHash);
+                nodeLookup(keyHash, null).forEach(node -> {
+                    ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
+                    Kademlia.StoreRequest request = Kademlia.StoreRequest.newBuilder()
+                            .setKey(keyHash.toString())
+                            .setValue(value)
+                            .setSender(self.toProto())
+                            .build();
+                    Kademlia.StoreResponse response = KademliaServiceGrpc.newBlockingStub(channel).store(request);
+                    channel.shutdown();
+                });
+            }
+        };
+        Timer republishTimer = new Timer();
+        republishTimer.schedule(republishTask, republishInterval.toMillis(), republishInterval.toMillis());
+        localDataRepublishTimers.put(keyHash, republishTimer);
     }
 
     /**
@@ -457,7 +497,8 @@ public class KademliaNode {
         public void store(Kademlia.StoreRequest request, StreamObserver<Kademlia.StoreResponse> responseObserver) {
             BigInteger key = new BigInteger(request.getKey());
             String value = request.getValue();
-            localData.put(key, value);
+
+            putAndScheduleRepublish(key, value);
 
             responseObserver.onNext(Kademlia.StoreResponse.newBuilder().setStatus(Kademlia.Status.SUCCESS).build());
             responseObserver.onCompleted();

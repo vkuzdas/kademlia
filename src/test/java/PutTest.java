@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.math.BigInteger;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -21,6 +22,36 @@ public class PutTest extends BaseTest {
        2. Test put + join
        3. Test put + leave
     */
+
+    /**
+     * Validate that key is republished on K closest nodes after specified republish interval <br>
+     * 1. put a key on a Single node <br>
+     * 2. put key on it <br>
+     * 3. join with other nodes <br>
+     * 4. wait for republish interval <br>
+     * 5. validate that key is on K XOR-closest nodes <br>
+     */
+    @Test
+    public void testPutJoinRepublish() throws IOException, InterruptedException {
+        BITS = 10;
+        KademliaNode.setIdLength(BITS);
+        Duration interval = Duration.ofSeconds(3);
+        KademliaNode.setRepublishInterval(interval);
+
+        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
+        bootstrap.initKademlia();
+        bootstrap.put("key", "value");
+
+        KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ONE);
+        joiner.join(bootstrap.getNodeReference());
+
+        assertNull(joiner.getLocalData().get(Util.getId("key")));
+
+        // wait for republish interval
+        Thread.sleep(interval.toMillis());
+
+        assertEquals("value", joiner.getLocalData().get(Util.getId("key")));
+    }
 
     /**
      * insert some 2K nodes

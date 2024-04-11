@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Random;
 
@@ -15,6 +16,7 @@ public class BaseTest {
     protected int BITS = 20;
     protected int K = 4;
     protected int ALPHA = 3;
+    protected final Random random = new Random();
 
     protected final ArrayList<KademliaNode> runningNodes = new ArrayList<>();
 
@@ -38,6 +40,10 @@ public class BaseTest {
     }
 
     protected KademliaNode getRandomRunningNode() {
-        return runningNodes.get(new Random().nextInt(runningNodes.size()));
+        return runningNodes.get(random.nextInt(runningNodes.size()));
+    }
+
+    protected BigInteger getRandomId() {
+        return new BigInteger(""+random.nextInt((int)Math.pow(2,BITS)));
     }
 }

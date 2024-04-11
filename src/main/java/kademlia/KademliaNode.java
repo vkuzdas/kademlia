@@ -27,12 +27,11 @@ public class KademliaNode {
 
     private final NodeReference self;
 
-    private final ReentrantLock lock = new ReentrantLock();
-
     /**
      * Local data storage
      */
-    private final NavigableMap<BigInteger, String> localData = new TreeMap<>();
+//    private final NavigableMap<BigInteger, String> localData = new TreeMap<>();
+    private final Map<BigInteger, String> localData = Collections.synchronizedMap(new HashMap<>());
 
 
     /**
@@ -88,8 +87,8 @@ public class KademliaNode {
     }
 
     @VisibleForTesting
-    public NavigableMap<BigInteger, String> getLocalData() {
-        return syncGetLocalCopy();
+    public Map<BigInteger, String> getLocalData() {
+        return localData;
     }
 
     public NodeReference getNodeReference() {
@@ -251,6 +250,30 @@ public class KademliaNode {
         return k_best;
     }
 
+    /**
+     * Remove and return keys with XOR-distance lesser to targetId than to selfId <br>
+     * Since each key is placed according to XOR distance, whole map has to be iterated over to see which keys are closer to the lastly joined node
+     */
+    private List<Map.Entry<BigInteger, String>> extractKeys(BigInteger targetId) {
+        List<Map.Entry<BigInteger, String>> extracted = new ArrayList<>();
+
+        synchronized (localData) {
+            localData.forEach((k, v) -> {
+                BigInteger currDistance = k.xor(self.getId());
+                BigInteger joiningNodeDistance = k.xor(targetId);
+
+                // extract nodes XOR-closer to joining node
+                if (joiningNodeDistance.compareTo(currDistance) <= 0) {
+                    extracted.add(new AbstractMap.SimpleEntry<>(k, v));
+                }
+
+            });
+            extracted.forEach(e -> localData.remove(e.getKey()));
+        }
+
+        return extracted;
+    }
+
     private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
         return collection.stream()
                 .map(n -> targetId.subtract(n.getId()).abs())
@@ -323,7 +346,7 @@ public class KademliaNode {
         BigInteger keyHash = getId(key);
 
         if(routingTable.getSize() == 0) {
-            syncLocalPut(keyHash, value);
+            localData.put(keyHash, value);
             return;
         }
 
@@ -348,7 +371,7 @@ public class KademliaNode {
         BigInteger keyHash = getId(key);
 
         if(routingTable.getSize() == 0) {
-            return Collections.singletonList(new Pair(self, syncLocalGet(keyHash)));
+            return Collections.singletonList(new Pair(self, localData.get(keyHash)));
         }
 
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
@@ -368,32 +391,7 @@ public class KademliaNode {
         return result;
     }
 
-    private void syncLocalPut(BigInteger key, String value) {
-        lock.lock();
-        try {
-            localData.put(key, value);
-        } finally {
-            lock.unlock();
-        }
-    }
 
-    private String syncLocalGet(BigInteger key) {
-        lock.lock();
-        try {
-            return localData.get(key);
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    private NavigableMap<BigInteger, String> syncGetLocalCopy() {
-        lock.lock();
-        try {
-            return new TreeMap<>(localData);
-        } finally {
-            lock.unlock();
-        }
-    }
 
     ////////////////////////////////
     ///  SERVER-SIDE PROCESSING  ///
@@ -404,6 +402,8 @@ public class KademliaNode {
      */
     private class KademliaNodeServer extends KademliaServiceGrpc.KademliaServiceImplBase {
 
+        // TODO: When a Kademlia node receives any message (re-quest or reply) from another node, it updates the
+        //  appropriate k-bucket for the sender’s node ID
 
         @Override
         public void promptNodeLookup(Kademlia.LookupRequest request, StreamObserver<Kademlia.LookupResponse> responseObserver) {
@@ -429,7 +429,7 @@ public class KademliaNode {
         public void store(Kademlia.StoreRequest request, StreamObserver<Kademlia.StoreResponse> responseObserver) {
             BigInteger key = new BigInteger(request.getKey());
             String value = request.getValue();
-            syncLocalPut(key, value);
+            localData.put(key, value);
 
             responseObserver.onNext(Kademlia.StoreResponse.newBuilder().setStatus(Kademlia.Status.SUCCESS).build());
             responseObserver.onCompleted();
@@ -441,7 +441,7 @@ public class KademliaNode {
         @Override
         public void retrieve(Kademlia.RetrieveRequest request, StreamObserver<Kademlia.RetrieveResponse> responseObserver) {
             BigInteger key = new BigInteger(request.getKey());
-            String value = syncLocalGet(key);
+            String value = localData.get(key);
 
             Kademlia.RetrieveResponse response;
             if (value == null) {
@@ -495,10 +495,5 @@ public class KademliaNode {
             super.ping(request, responseObserver);
         }
     }
-
-
-
-
-
 
 }

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 public class RoutingTable {
     private static final Logger logger = LoggerFactory.getLogger(RoutingTable.class);
@@ -43,46 +44,55 @@ public class RoutingTable {
     }
 
     /**
-     * Response to FIND_NODE RPC
-     * Recipient returns k nodes it knows about closest to the target ID
+     * Response to FIND_NODE RPC <br>
+     * Recipient returns k nodes it knows about closest to the target ID <br>
+     * <a href="https://stackoverflow.com/questions/30654398/implementing-find-node-on-torrent-kademlia-routing-table/30655403#30655403">Link:</a>
+     * TL;DR: "just look one bucket left, one bucket right" is not sufficient. The correct algorithm is fairly involved, a linear scan over the whole table is easier to implement
      */
     public List<NodeReference> findKClosest(BigInteger targetId) {
-        int index = getBucketIndex(targetId);
+        return buckets.stream()
+                .filter(b -> !b.isEmpty())
+                .flatMap(KBucket::toStream)
+                .sorted(Comparator.comparing(node -> targetId.xor(node.getId())))
+                .limit(K_PARAMETER)
+                .collect(Collectors.toList());
 
-        KBucket targetBucket = buckets.get(index);
-
-        lock.lock();
-        try {
-            if (targetBucket.isFull()) {
-                return targetBucket.toList();
-            }
-
-            // else keep merging up/down buckets
-            int shift = 1;
-            ArrayList<NodeReference> res = new ArrayList<>(targetBucket.toList());
-
-            while (shift <= Math.max(index, MAX_SIZE - index)) {
-
-                ArrayList<NodeReference> closestCandidates = new ArrayList<>();
-
-                if (index - shift >= 0)
-                    closestCandidates.addAll(getKBucket(index - shift).toList());
-
-                if (index + shift < MAX_SIZE)
-                    closestCandidates.addAll(getKBucket(index + shift).toList());
-
-                // sort by difference, add the remaining closest elements
-                closestCandidates.stream()
-                        .sorted(Comparator.comparing(nodeReference -> targetId.subtract(nodeReference.getId()).abs()))
-                        .limit(K_PARAMETER - res.size())
-                        .forEach(res::add);
-                shift++;
-            }
-
-            return res; // there is less than K nodes
-        } finally {
-            lock.unlock();
-        }
+//        int index = getBucketIndex(targetId);
+//
+//        KBucket targetBucket = buckets.get(index);
+//
+//        lock.lock();
+//        try {
+//            if (targetBucket.isFull()) {
+//                return targetBucket.toList();
+//            }
+//
+//            // else keep merging up/down buckets
+//            int shift = 1;
+//            ArrayList<NodeReference> res = new ArrayList<>(targetBucket.toList());
+//
+//            while (shift <= Math.max(index, MAX_SIZE - index)) {
+//
+//                ArrayList<NodeReference> closestCandidates = new ArrayList<>();
+//
+//                if (index - shift >= 0)
+//                    closestCandidates.addAll(getKBucket(index - shift).toList());
+//
+//                if (index + shift < MAX_SIZE)
+//                    closestCandidates.addAll(getKBucket(index + shift).toList());
+//
+//                // sort by difference, add the remaining closest elements
+//                closestCandidates.stream()
+//                        .sorted(Comparator.comparing(nodeReference -> targetId.subtract(nodeReference.getId()).abs()))
+//                        .limit(K_PARAMETER - res.size())
+//                        .forEach(res::add);
+//                shift++;
+//            }
+//
+//            return res; // there is less than K nodes
+//        } finally {
+//            lock.unlock();
+//        }
 
     }
 

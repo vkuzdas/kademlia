@@ -3,6 +3,7 @@ package kademlia;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * Each KBucket is kept sorted by time last seen: most-recently seen at the tail
@@ -66,12 +67,20 @@ public class KBucket {
         return new ArrayList<>(nodes);
     }
 
+    public Stream<NodeReference> toStream() {
+        return nodes.stream();
+    }
+
     public boolean contains(NodeReference node) {
         return nodes.contains(node);
     }
 
     public boolean isFull() {
         return nodes.size() == MAX_SIZE;
+    }
+
+    public boolean isEmpty() {
+        return nodes.size() == 0;
     }
 
     public NodeReference getHead() {

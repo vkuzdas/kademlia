@@ -101,34 +101,6 @@ public class RoutingTableTest extends BaseTest {
     }
 
     @Test
-    public void testClosestFarAway() {
-        // owner 10005:524289
-        // joiners: 10004:524288 10006:524290 10007:524291
-        // 0 = {NodeReference@4826} "10002:32770"
-        //1 = {NodeReference@4827} "10003:32771"
-        //2 = {NodeReference@4828} "10001:32769"
-        //3 = {NodeReference@4829} "10000:32768"
-        // 885733
-
-        // TODO: pripodobni na mensich id abys to lepe pochopil
-
-        NodeReference owner = new NodeReference(LOCAL_IP, BASE_PORT++, new BigInteger("524289"));
-        RoutingTable routingTable = new RoutingTable(BITS, ALPHA, K, owner);
-
-        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT++, new BigInteger("524288")));
-        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT++, new BigInteger("524290")));
-        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT++, new BigInteger("524291")));
-
-        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT++, new BigInteger("32768")));
-        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT++, new BigInteger("32769")));
-        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT++, new BigInteger("32770")));
-        routingTable.insert(new NodeReference(LOCAL_IP, BASE_PORT++, new BigInteger("32771")));
-
-        List<NodeReference> kClosest = routingTable.findKClosest(new BigInteger("885733"));
-        System.out.println(kClosest);
-    }
-
-    @Test
     public void testDistance() {
         BigInteger routingTableOwnerID = new BigInteger("60");
         BigInteger newNode = new BigInteger("49");

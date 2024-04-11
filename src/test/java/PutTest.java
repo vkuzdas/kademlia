@@ -1,13 +1,15 @@
 import kademlia.KademliaNode;
 import kademlia.NodeReference;
 import kademlia.Util;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Random;
+import java.util.stream.Collectors;
 
 import static kademlia.Util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,6 +21,76 @@ public class PutTest extends BaseTest {
        2. Test put + join
        3. Test put + leave
     */
+
+    /**
+     * insert some 2K nodes
+     * put a value on them
+     * validate value is on closest nodes
+     * make another node join the network
+     * validate that key is reorganized on the joined node
+     */
+    @Test
+    @Disabled("TODO")
+    public void testPutJoinReorganizeKeys() throws IOException {
+        BITS = 10;
+        KademliaNode.setIdLength(BITS);
+
+        for (int i = 0; i < 2*K; i++) {
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, getRandomId());
+
+            if (runningNodes.isEmpty()) {
+                joiner.initKademlia();
+            } else {
+                joiner.join(getRandomRunningNode().getNodeReference());
+            }
+
+            runningNodes.add(joiner);
+        }
+
+        String key = "key";
+        BigInteger keyHash = Util.getId(key);
+        String value = "value";
+        getRandomRunningNode().put(key, value);
+
+        // K closest from all runnning
+        List<KademliaNode> expectedKClosest1 = runningNodes.stream()
+                .sorted(Comparator.comparing(node -> node.getNodeReference().getId().xor(keyHash)))
+                .limit(K)
+                .collect(Collectors.toList());
+
+        // K closest returned from the network
+        List<NodeReference> actualKClosest1 = new ArrayList<>();
+        getRandomRunningNode().get(key).forEach(p -> actualKClosest1.add(p.node));
+
+        // Assert they are same
+        expectedKClosest1.forEach(n -> {
+            assertTrue(actualKClosest1.contains(n.getNodeReference()));
+            assertEquals(value, n.getLocalData().get(keyHash));
+        });
+
+
+        // TODO: when joining, new node should get XOR-closest nodes
+
+        // new node that is closest to keyHash
+        KademliaNode closeToKeyHash = new KademliaNode(LOCAL_IP, BASE_PORT++, keyHash.add(BigInteger.ONE));
+        closeToKeyHash.join(getRandomRunningNode().getNodeReference());
+
+        // K closest from all runnning
+        List<KademliaNode> expectedKClosest2 = runningNodes.stream()
+                .sorted(Comparator.comparing(node -> node.getNodeReference().getId().xor(keyHash)))
+                .limit(K)
+                .collect(Collectors.toList());
+
+        // K closest returned from the network
+        List<NodeReference> actualKClosest2 = new ArrayList<>();
+        getRandomRunningNode().get(key).forEach(p -> actualKClosest2.add(p.node));
+
+        // Assert they are same
+        expectedKClosest2.forEach(n -> {
+            assertTrue(actualKClosest2.contains(n.getNodeReference()));
+            assertEquals(value, n.getLocalData().get(keyHash));
+        });
+    }
 
     @Test
     public void testPut_singleNode() throws IOException {

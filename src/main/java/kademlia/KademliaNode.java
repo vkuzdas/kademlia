@@ -60,10 +60,13 @@ public class KademliaNode {
     private final Server server;
 
     /**
-     * Time after which the original publisher must republish a key/value pair
+     * Time after which the original publisher must republish a key/value pair <br>
+     * Note: For opt-1, original protocol assumes a certain network delay which results in non-racing intervals between the nodes.
+     * Since this implementation runs mainly locally, we need to 'desynchronize' the republishing intervals
      */
     // TODO: opt-1, opt-2
     private static Duration republishInterval = Duration.ofMinutes(15);
+    private static boolean desynchronizeRepublishInterval = false;
 
 
     @VisibleForTesting
@@ -156,7 +159,9 @@ public class KademliaNode {
     }
 
     public void shutdownKademliaNode() {
+        logger.warn("[{}]  Initiated node shutdown!", self);
         stopServer();
+        localDataRepublishTimers.forEach((k, v) -> v.cancel());
     }
 
     public void stopServer() {
@@ -243,7 +248,16 @@ public class KademliaNode {
 
         while (true) { // while better results are coming
 
-            Set<NodeReference> foundInOneIteration = multicastFindNode(new ArrayList<>(k_best), targetId, joiningNode);
+            Set<NodeReference> failedNodes = new HashSet<>();
+            Set<NodeReference> foundInOneIteration = multicastFindNode(new ArrayList<>(k_best), targetId, joiningNode, failedNodes);
+            if (!failedNodes.isEmpty()) {
+                for (NodeReference failedNode : failedNodes) {
+                    routingTable.remove(failedNode);
+                    k_best.remove(failedNode);
+                    foundInOneIteration.remove(failedNode);
+                    allFoundNodes.remove(failedNode);
+                }
+            }
 
             if (joiningNode != null) {
                 allFoundNodes.addAll(foundInOneIteration);
@@ -252,9 +266,6 @@ public class KademliaNode {
             BigInteger currBest = getBestDistance(k_best, targetId);
             BigInteger newBest = getBestDistance(foundInOneIteration, targetId);
 
-
-
-            // update k_best: remove duplicates, sort by distance to target, keep only K best
             foundInOneIteration.addAll(k_best);
 
             k_best = foundInOneIteration.stream()
@@ -313,7 +324,7 @@ public class KademliaNode {
      * Makes at most ALPHA concurrent calls (depends on the size of toQuery)
      * Returns all nodes found during the lookup
      */
-    private Set<NodeReference> multicastFindNode(List<NodeReference> toQuery, BigInteger targetId, Kademlia.NodeReference joiningNode) {
+    private Set<NodeReference> multicastFindNode(List<NodeReference> toQuery, BigInteger targetId, Kademlia.NodeReference joiningNode, Set<NodeReference> failedNodes) {
         toQuery.remove(self); // do not query self
         Set<NodeReference> foundInOneIteration = new HashSet<>();
 
@@ -323,17 +334,15 @@ public class KademliaNode {
             Set<NodeReference> found = Collections.synchronizedSet(new HashSet<>());
 
             for (int i = 0; i < calls; i++) {
-                NodeReference curr = toQuery.remove(toQuery.size() - 1);
+                NodeReference recipient = toQuery.remove(toQuery.size() - 1);
 
-                ManagedChannel channel = ManagedChannelBuilder.forTarget(curr.getAddress()).usePlaintext().build();
+                ManagedChannel channel = ManagedChannelBuilder.forTarget(recipient.getAddress()).usePlaintext().build();
                 Kademlia.FindNodeRequest.Builder request = Kademlia.FindNodeRequest.newBuilder()
                         .setTargetId(targetId.toString())
                         .setSender(self.toProto());
                 if (joiningNode != null)
                     request.setJoiningNode(joiningNode);
                 KademliaServiceGrpc.newStub(channel).findNode(request.build(), new StreamObserver<Kademlia.FindNodeResponse>() {
-                    // TODO: sometimes throws SEVERE: *~*~*~ Channel ManagedChannelImpl{logId=8948, target=localhost:10023} was not terminated properly!!! ~*~*~*
-                    //    Make sure to call shutdown()/shutdownNow() and wait until awaitTermination() returns true.
                     @Override
                     public void onNext(Kademlia.FindNodeResponse findNodeResponse) {
                         findNodeResponse.getKClosestList().stream().map(NodeReference::new).forEach(found::add);
@@ -342,7 +351,8 @@ public class KademliaNode {
                     @Override
                     public void onError(Throwable throwable) {
                         // TODO: remove node ?
-                        logger.error("[{}]  Error while finding node: {}", self, throwable.toString());
+                        logger.error("[{}]  Error while finding node[{}]: {}", self, recipient, throwable.toString());
+                        failedNodes.add(recipient);
                         latch.countDown();
                         channel.shutdown();
                     }
@@ -411,6 +421,7 @@ public class KademliaNode {
             }
         };
         Timer republishTimer = new Timer();
+        // TODO: opt-1 if desynchronizeRepublishInterval == true, add random delay
         republishTimer.schedule(republishTask, republishInterval.toMillis(), republishInterval.toMillis());
         localDataRepublishTimers.put(keyHash, republishTimer);
     }
@@ -455,6 +466,14 @@ public class KademliaNode {
 
         // TODO: When a Kademlia node receives any message (request or reply) from another node, it updates the
         //  appropriate k-bucket for the sender’s node ID
+        // Whenever a node receives a communication from another, it
+        // updates the corresponding bucket. If the contact already exists,
+        // it is moved to the end of the bucket. Otherwise, if the bucket is not
+        // full, the new contact is added at the end. If the bucket is full, the
+        // node pings the contact at the head of the bucket's list. If that least
+        // recently seen contact fails to respond in an (unspecified) reasonable time,
+        // it is dropped from the list, and the new contact is added at the tail.
+        // Otherwise the new contact is ignored for bucket updating purposes.
 
 
         /**

@@ -50,12 +50,17 @@ public class RoutingTable {
      * TL;DR: "just look one bucket left, one bucket right" is not sufficient. The correct algorithm is fairly involved, a linear scan over the whole table is easier to implement
      */
     public List<NodeReference> findKClosest(BigInteger targetId) {
-        return buckets.stream()
-                .filter(b -> !b.isEmpty())
-                .flatMap(KBucket::toStream)
-                .sorted(Comparator.comparing(node -> targetId.xor(node.getId())))
-                .limit(K_PARAMETER)
-                .collect(Collectors.toList());
+        lock.lock();
+        try {
+            return buckets.stream()
+                    .filter(b -> !b.isEmpty())
+                    .flatMap(KBucket::toStream)
+                    .sorted(Comparator.comparing(node -> targetId.xor(node.getId())))
+                    .limit(K_PARAMETER)
+                    .collect(Collectors.toList());
+        } finally {
+            lock.unlock();
+        }
 
     }
 
@@ -71,6 +76,23 @@ public class RoutingTable {
             if (inserted) {
                 size++;
             }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void remove(NodeReference toRemove) {
+        lock.lock();
+        try {
+            if (owner.equals(toRemove))
+                return;
+            int index = getBucketIndex(toRemove.getId());
+            KBucket bucket = buckets.get(index);
+
+            boolean removed = bucket.remove(toRemove);
+
+            if (removed)
+                size--;
         } finally {
             lock.unlock();
         }
@@ -108,6 +130,7 @@ public class RoutingTable {
             lock.unlock();
         }
     }
+
 
 
 }

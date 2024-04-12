@@ -90,4 +90,8 @@ public class KBucket {
     public NodeReference getTail() {
         return nodes.peekLast();
     }
+
+    public boolean remove(NodeReference toRemove) {
+        return nodes.remove(toRemove);
+    }
 }

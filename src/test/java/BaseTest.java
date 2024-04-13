@@ -1,11 +1,14 @@
 import kademlia.KademliaNode;
 import kademlia.RoutingTable;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigInteger;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Random;
 
@@ -22,10 +25,12 @@ public class BaseTest {
 
 
     @BeforeEach
-    public void init() {
+    public void init(TestInfo testInfo) {
+        logger.warn(System.lineSeparator() + System.lineSeparator()+ "============== {} =============" + System.lineSeparator(), testInfo.getDisplayName());
         KademliaNode.setAlpha(ALPHA);
         KademliaNode.setK(K);
         KademliaNode.setIdLength(BITS);
+        KademliaNode.setRepublishInterval(Duration.ofDays(1)); // turn off republishing
     }
 
     /**

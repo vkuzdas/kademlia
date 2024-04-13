@@ -3,11 +3,14 @@ import kademlia.Util;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
 
 import java.io.IOException;
 import java.math.BigInteger;
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -23,7 +26,9 @@ public class PutRepublishTest extends BaseTest {
 
     @BeforeEach
     @Override
-    public void init() {
+    public void init(TestInfo testInfo) {
+        logger.warn(System.lineSeparator() + System.lineSeparator()+ "============== {} =============" + System.lineSeparator(), testInfo.getDisplayName());
+
         BITS = 10;
 
         KademliaNode.setAlpha(ALPHA);
@@ -31,6 +36,7 @@ public class PutRepublishTest extends BaseTest {
         KademliaNode.setIdLength(BITS);
 
         KademliaNode.setRepublishInterval(republishInterval);
+        KademliaNode.setDesynchronizeRepublishInterval(true);
     }
 
 
@@ -69,7 +75,11 @@ public class PutRepublishTest extends BaseTest {
         // wait for republish interval
         Thread.sleep(interval.toMillis());
 
-        assertEquals("value", joiner.getLocalData().get(Util.getId("key")));
+        await()
+                .atMost(interval.toMillis(), TimeUnit.SECONDS)
+                .untilAsserted(() -> {
+                    assertEquals("value", joiner.getLocalData().get(Util.getId("key")));
+                });
     }
 
 
@@ -84,7 +94,7 @@ public class PutRepublishTest extends BaseTest {
      * 5. validate that key is on K XOR-closest nodes <br>
      */
     @Test
-    @Disabled("TODO")
+    @Disabled("[10004:4]  Asynchronously republishing key 1018 to k-closest: [10003:3, 10002:2, 10001:1]")
     public void testPutLeaveRepublish() throws IOException, InterruptedException {
         for (int i = 0; i < K+1; i++) {
             KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.valueOf(i));
@@ -103,45 +113,16 @@ public class PutRepublishTest extends BaseTest {
         runningNodes.get(1).shutdownKademliaNode();
         runningNodes.remove(1);
 
-        // TODO: onError should be removed from kBucket
+        // TODO: [10004:4]  Asynchronously republishing key 1018 to k-closest: [10003:3, 10002:2, 10001:1]
 
         // wait for a bit longer than republish interval (not doing so may trigger testing node shutdown method before republish)
         Thread.sleep((long) (1.5*republishInterval.toMillis()));
 
         // after the republish interval, key should be present on the first
         // node since it is now globally one of the K XOR-closest nodes
-        assertNotNull(runningNodes.get(0).getLocalData().get(Util.getId("key")));
+        await().atMost((long) (1.5*republishInterval.toMillis()), TimeUnit.SECONDS)
+                .untilAsserted(() -> assertNotNull(runningNodes.get(0).getLocalData().get(Util.getId("key"))));
     }
-
-    /**
-     * When republishing to left node, it gets deleted when no response arrives
-     */
-    @Test
-    @Disabled("TODO")
-    public void testLeaveRepublish() throws IOException, InterruptedException {
-        for (int i = 0; i < K+1; i++) {
-            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.valueOf(i));
-            if (runningNodes.isEmpty())
-                joiner.initKademlia();
-            else
-                joiner.join(getRandomRunningNode().getNodeReference());
-            runningNodes.add(joiner);
-        }
-        getRandomRunningNode().put("key", "value");
-
-        // the first node (id=0) should be the farthest and therefore not contain the key initially
-        assertNull(runningNodes.get(0).getLocalData().get(Util.getId("key")));
-
-        // simulate fail on one of the storing nodes
-        runningNodes.get(1).shutdownKademliaNode();
-        runningNodes.remove(1);
-
-        // TODO: onError should be removed from kBucket
-
-        // wait for a bit longer than republish interval (not doing so may trigger testing node shutdown method before republish)
-        Thread.sleep((long) (1.5*republishInterval.toMillis()));
-    }
-
 
     /**
      * If node fails to respond to multicastFindNode, it should be removed from routing table

@@ -75,8 +75,7 @@ public class PutRepublishTest extends BaseTest {
         // wait for republish interval
         Thread.sleep(interval.toMillis());
 
-        await()
-                .atMost(interval.toMillis(), TimeUnit.SECONDS)
+        await().atMost(interval.toMillis(), TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> {
                     assertEquals("value", joiner.getLocalData().get(Util.getId("key")));
                 });
@@ -94,8 +93,7 @@ public class PutRepublishTest extends BaseTest {
      * 5. validate that key is on K XOR-closest nodes <br>
      */
     @Test
-    @Disabled("[10004:4]  Asynchronously republishing key 1018 to k-closest: [10003:3, 10002:2, 10001:1]")
-    public void testPutLeaveRepublish() throws IOException, InterruptedException {
+    public void testPutLeaveRepublish() throws IOException {
         for (int i = 0; i < K+1; i++) {
             KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.valueOf(i));
             if (runningNodes.isEmpty())
@@ -113,14 +111,9 @@ public class PutRepublishTest extends BaseTest {
         runningNodes.get(1).shutdownKademliaNode();
         runningNodes.remove(1);
 
-        // TODO: [10004:4]  Asynchronously republishing key 1018 to k-closest: [10003:3, 10002:2, 10001:1]
-
-        // wait for a bit longer than republish interval (not doing so may trigger testing node shutdown method before republish)
-        Thread.sleep((long) (1.5*republishInterval.toMillis()));
-
         // after the republish interval, key should be present on the first
         // node since it is now globally one of the K XOR-closest nodes
-        await().atMost((long) (1.5*republishInterval.toMillis()), TimeUnit.SECONDS)
+        await().atMost((long) (1.2*republishInterval.toMillis()), TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> assertNotNull(runningNodes.get(0).getLocalData().get(Util.getId("key"))));
     }
 

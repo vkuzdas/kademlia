@@ -255,10 +255,10 @@ public class KademliaNode {
 
         List<NodeReference> k_best = routingTable.findKClosest(targetId);
         HashSet<NodeReference> allFoundNodes = new HashSet<>(k_best);
+        Set<NodeReference> failedNodes = new HashSet<>();
 
         while (true) { // while better results are coming
 
-            Set<NodeReference> failedNodes = new HashSet<>();
             Set<NodeReference> foundInOneIteration = multicastFindNode(new ArrayList<>(k_best), targetId, joiningNode, failedNodes);
             if (!failedNodes.isEmpty()) {
                 for (NodeReference failedNode : failedNodes) {
@@ -269,9 +269,8 @@ public class KademliaNode {
                 }
             }
 
-            if (joiningNode != null) {
+            if (joiningNode != null)
                 allFoundNodes.addAll(foundInOneIteration);
-            }
 
             BigInteger currBest = getBestDistance(k_best, targetId);
             BigInteger newBest = getBestDistance(foundInOneIteration, targetId);
@@ -361,7 +360,7 @@ public class KademliaNode {
                     @Override
                     public void onError(Throwable throwable) {
                         // TODO: remove node ?
-                        logger.error("[{}]  Error while finding node[{}]: {}", self, recipient, throwable.toString());
+                        logger.error("[{}]  multicastFindNode: Error while finding node[{}]: {}", self, recipient, throwable.toString());
                         failedNodes.add(recipient);
                         latch.countDown();
                         channel.shutdown();
@@ -443,6 +442,7 @@ public class KademliaNode {
                     public void onNext(Kademlia.StoreResponse storeResponse) {}
                     @Override
                     public void onError(Throwable throwable) {
+                        logger.error("[{}]  republish: Error while storing key[{}] on node[{}]: {}", self, keyHash, recipient, throwable.toString());
                         // TODO: remove node ?
                         latch.countDown();
                         channel.shutdown();
@@ -453,6 +453,12 @@ public class KademliaNode {
                         channel.shutdown();
                     }
                 });
+            }
+
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                logger.error("[{}]  Waiting for async calls interrupted", self, e);
             }
         };
     }

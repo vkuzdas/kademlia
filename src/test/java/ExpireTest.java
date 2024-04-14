@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 public class ExpireTest extends BaseTest {
 
     // TODO: this probably goes against single node republishing
+    // TODO: @Override public void store(Kademlia.StoreRequest request) will need some readjusting in order to support this along with republishing
 
     private final Duration expireInterval = Duration.ofSeconds(3);
 

@@ -57,11 +57,6 @@ public class NodeReference {
         return port;
     }
 
-//    @VisibleForTesting
-//    public void setId(BigInteger id) {
-//        this.id = id;
-//    }
-
 
     @Override
     public String toString() {
@@ -72,7 +67,7 @@ public class NodeReference {
 
     @Override
     public boolean equals(Object obj) {
-        if (obj == null || !(obj instanceof NodeReference)) {
+        if (!(obj instanceof NodeReference)) {
             return false;
         }
         NodeReference other = (NodeReference) obj;
@@ -81,9 +76,9 @@ public class NodeReference {
 
     @Override
     public int hashCode() {
-        int result = 17; // Základní hodnota pro výpočet hash kódu
-        result = 31 * result + ip.hashCode(); // Použití IP adresy pro výpočet hash kódu
-        result = 31 * result + port; // Použití portu pro výpočet hash kódu
+        int result = 17;
+        result = 31 * result + ip.hashCode();
+        result = 31 * result + port;
         return result;
     }
 

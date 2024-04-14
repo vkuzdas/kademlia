@@ -67,6 +67,10 @@ public class KademliaNode {
      * Since this implementation runs mainly locally, we need to 'desynchronize' the republishing intervals
      */
     private static Duration republishInterval = Duration.ofMinutes(15);
+    /**
+     * Whether to <b>forcefully</b> desynchronize republishing intervals. <br>
+     * Kademlia paper presents republishing optimization in which only the first republishing node republishes key. This however requires network delay assumption. By setting desynchronization to true, Node simulates network delay under local conditions.
+     */
     private static boolean desynchronizeRepublishInterval = false;
     private final int simulatedNetworkDelay = new Random().nextInt(800)+200;
 

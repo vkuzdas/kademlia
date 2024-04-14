@@ -512,20 +512,44 @@ public class KademliaNode {
         }
 
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
+        CountDownLatch latch = new CountDownLatch(kClosest.size());
 
-        // TODO: can be done in parallel
-        kClosest.forEach(node -> {
+        for (NodeReference node : kClosest) {
+
             if (node.equals(self)){
                 deleteAndDeschedule(keyHash);
                 return;
             }
+
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
             Kademlia.DeleteRequest.Builder request = Kademlia.DeleteRequest.newBuilder()
-                    .setSender(self.toProto())
-                    .setKey(keyHash.toString());
-            Kademlia.DeleteResponse response = KademliaServiceGrpc.newBlockingStub(channel).delete(request.build());
-            channel.shutdown();
-        });
+                    .setKey(keyHash.toString())
+                    .setSender(self.toProto());
+            KademliaServiceGrpc.newStub(channel).delete(request.build(), new StreamObserver<Kademlia.DeleteResponse>() {
+                @Override
+                public void onNext(Kademlia.DeleteResponse deleteResponse) {/*do nothing when response*/}
+
+                @Override
+                public void onError(Throwable throwable) {
+                    // TODO: remove node ?
+                    logger.error("[{}]  DELETE: Error while finding node[{}]: {}", self, node, throwable.toString());
+                    latch.countDown();
+                    channel.shutdown();
+                }
+
+                @Override
+                public void onCompleted() {
+                    latch.countDown();
+                    channel.shutdown();
+                }
+            });
+        }
+
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            logger.error("[{}]  Waiting for async calls interrupted", self, e);
+        }
     }
 
     private void deleteAndDeschedule(BigInteger keyhash) {

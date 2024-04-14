@@ -39,13 +39,6 @@ public class PutRepublishTest extends BaseTest {
         KademliaNode.setDesynchronizeRepublishInterval(true);
     }
 
-
-     /*TODO: opt-1 & opt-2:
-        opt-1: pokud node obdrzi STORE, potom nebude dalsi hodinu publikovat
-            -> This ensures that >>>as long as republication intervals are not exactly synchronized<<<, only    //one node will republish a given key-value pair every hour
-        opt-2: pokud jsme delali uplynulou hodinu bucket refresh, nebudeme delat FIND_NODE ale rovnout STORE*/
-
-
     /**
      * <i>"New nodes may join the network with IDs closer to some published key than the nodes on which
      * the key-value pair was originally published"</i> <br><br>

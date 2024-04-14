@@ -7,12 +7,12 @@ option java_package = "proto";
 message LookupRequest {
   string targetId = 1;
   NodeReference joiningNode = 2;
+  NodeReference sender = 3;
 }
 
 message MoveKeysRequest {
-  string senderIp = 1;
-  int32 senderPort = 2;
-  string joiningNodeId = 3;
+  NodeReference sender = 1;
+  string joiningNodeId = 2;
 }
 
 message MoveKeysResponse {

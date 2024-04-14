@@ -66,7 +66,6 @@ public class KademliaNode {
      * Note: For opt-1, original protocol assumes a certain network delay which results in non-racing intervals between the nodes.
      * Since this implementation runs mainly locally, we need to 'desynchronize' the republishing intervals
      */
-    // TODO: opt-1, opt-2
     private static Duration republishInterval = Duration.ofMinutes(15);
     private static boolean desynchronizeRepublishInterval = false;
     private final int simulatedNetworkDelay = new Random().nextInt(800)+200;
@@ -229,8 +228,7 @@ public class KademliaNode {
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
             Kademlia.MoveKeysRequest request = Kademlia.MoveKeysRequest.newBuilder()
                     .setJoiningNodeId(self.getId().toString())
-                    .setSenderIp(self.getIp())
-                    .setSenderPort(self.getPort())
+                    .setSender(self.toProto())
                     .build();
             Kademlia.MoveKeysResponse response = KademliaServiceGrpc.newBlockingStub(channel).moveKeys(request);
             channel.shutdown();
@@ -480,6 +478,7 @@ public class KademliaNode {
         kClosest.forEach(node -> {
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
             Kademlia.RetrieveRequest.Builder request = Kademlia.RetrieveRequest.newBuilder()
+                    .setSender(self.toProto())
                     .setKey(keyHash.toString());
             Kademlia.RetrieveResponse response = KademliaServiceGrpc.newBlockingStub(channel).retrieve(request.build());
             channel.shutdown();
@@ -503,14 +502,6 @@ public class KademliaNode {
 
         // TODO: When a Kademlia node receives any message (request or reply) from another node, it updates the
         //  appropriate k-bucket for the sender’s node ID
-        // Whenever a node receives a communication from another, it
-        // updates the corresponding bucket. If the contact already exists,
-        // it is moved to the end of the bucket. Otherwise, if the bucket is not
-        // full, the new contact is added at the end. If the bucket is full, the
-        // node pings the contact at the head of the bucket's list. If that least
-        // recently seen contact fails to respond in an (unspecified) reasonable time,
-        // it is dropped from the list, and the new contact is added at the tail.
-        // Otherwise the new contact is ignored for bucket updating purposes.
 
 
         /**
@@ -534,6 +525,8 @@ public class KademliaNode {
 
         @Override
         public void moveKeys(Kademlia.MoveKeysRequest request, StreamObserver<Kademlia.MoveKeysResponse> responseObserver) {
+            routingTable.insert(new NodeReference(request.getSender()));
+
             Kademlia.MoveKeysResponse.Builder response = Kademlia.MoveKeysResponse.newBuilder();
             extractKeys(new BigInteger(request.getJoiningNodeId()))
                     .forEach(entry -> {
@@ -551,7 +544,9 @@ public class KademliaNode {
          */
         @Override
         public void store(Kademlia.StoreRequest request, StreamObserver<Kademlia.StoreResponse> responseObserver) {
+            routingTable.insert(new NodeReference(request.getSender()));
             logger.trace("[{}]  Received STORE rpc from {}", self, request.getSender().getPort());
+
             BigInteger key = new BigInteger(request.getKey());
             String value = request.getValue();
 
@@ -576,6 +571,8 @@ public class KademliaNode {
          */
         @Override
         public void retrieve(Kademlia.RetrieveRequest request, StreamObserver<Kademlia.RetrieveResponse> responseObserver) {
+            routingTable.insert(new NodeReference(request.getSender()));
+
             BigInteger key = new BigInteger(request.getKey());
             String value = localData.get(key);
 

@@ -226,19 +226,6 @@ public class KademliaNode {
         logger.warn("[{}]  Joined KadNetwork!", self);
     }
 
-    private void getKeys(List<NodeReference> myClosest) {
-        // TODO: can be done in parallel
-        myClosest.forEach(node -> {
-            ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
-            Kademlia.MoveKeysRequest request = Kademlia.MoveKeysRequest.newBuilder()
-                    .setJoiningNodeId(self.getId().toString())
-                    .setSender(self.toProto())
-                    .build();
-            Kademlia.MoveKeysResponse response = KademliaServiceGrpc.newBlockingStub(channel).moveKeys(request);
-            channel.shutdown();
-            response.getEntriesList().forEach(e -> localData.put(new BigInteger(e.getKey()), e.getValue()));
-        });
-    }
 
     /**
      * Locate K globally-closest nodes to the targetId <br>
@@ -246,7 +233,6 @@ public class KademliaNode {
      * @param joiningNode - node that is joining the network, null if it's a regular lookup
      * @return List of nodes that were found during the lookup <br>
      */
-    // TODO: think about joining node case separation
     private List<NodeReference> nodeLookup(BigInteger targetId, Kademlia.NodeReference joiningNode) {
         logger.trace("[{}]  initiating nodeLookup", self);
 
@@ -493,6 +479,29 @@ public class KademliaNode {
         return result;
     }
 
+    public void delete(String key) {
+        BigInteger keyHash = getId(key);
+
+        if(routingTable.getSize() == 0) {
+            localData.remove(keyHash);
+            return;
+        }
+
+        List<NodeReference> kClosest = nodeLookup(keyHash, null);
+
+        kClosest.forEach(node -> {
+            if (node.equals(self)){
+                localData.remove(keyHash);
+                return;
+            }
+            ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
+            Kademlia.DeleteRequest.Builder request = Kademlia.DeleteRequest.newBuilder()
+                    .setSender(self.toProto())
+                    .setKey(keyHash.toString());
+            Kademlia.DeleteResponse response = KademliaServiceGrpc.newBlockingStub(channel).delete(request.build());
+            channel.shutdown();
+        });
+    }
 
 
     ////////////////////////////////
@@ -624,6 +633,29 @@ public class KademliaNode {
 //            logger.trace("[{}]  Sending FIND_NODE response", self);
 
             responseObserver.onNext(response.build());
+            responseObserver.onCompleted();
+        }
+
+        @Override
+        public void delete(Kademlia.DeleteRequest request, StreamObserver<Kademlia.DeleteResponse> responseObserver) {
+            routingTable.insert(new NodeReference(request.getSender()));
+
+            BigInteger key = new BigInteger(request.getKey());
+            String value = localData.get(key);
+
+            Kademlia.DeleteResponse response;
+            if (value == null) {
+                response = Kademlia.DeleteResponse.newBuilder()
+                        .setStatus(Kademlia.Status.NOT_FOUND)
+                        .build();
+            } else {
+                localData.remove(key);
+                response = Kademlia.DeleteResponse.newBuilder()
+                        .setStatus(Kademlia.Status.SUCCESS)
+                        .build();
+            }
+
+            responseObserver.onNext(response);
             responseObserver.onCompleted();
         }
 

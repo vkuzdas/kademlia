@@ -72,12 +72,25 @@ enum Status {
   ERROR = 2;
 }
 
+message DeleteRequest {
+  string key = 1;
+  NodeReference sender = 2;
+}
+
+message DeleteResponse {
+  Status status = 1;
+  NodeReference sender = 2;
+}
+
 service KademliaService {
   rpc PromptNodeLookup(LookupRequest) returns (LookupResponse) {}
   rpc MoveKeys(MoveKeysRequest) returns (MoveKeysResponse) {}
 
   rpc FindNode(FindNodeRequest) returns (FindNodeResponse) {}
+
   rpc Retrieve(RetrieveRequest) returns (RetrieveResponse) {}
   rpc Store(StoreRequest) returns (StoreResponse) {}
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+
   rpc Ping(Empty) returns (Empty) {}
 }

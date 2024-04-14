@@ -364,7 +364,6 @@ public class KademliaNode {
 
                     @Override
                     public void onError(Throwable throwable) {
-                        // TODO: remove node ?
                         logger.error("[{}]  multicastFindNode: Error while finding node[{}]: {}", self, recipient, throwable.toString());
                         failedNodes.add(recipient);
                         latch.countDown();
@@ -442,8 +441,8 @@ public class KademliaNode {
 
             logger.debug("[{}]  Asynchronously republishing key {} to k-closest: {}", self, keyHash, kClosest);
 
-            for (NodeReference recipient : kClosest) {
-                ManagedChannel channel = ManagedChannelBuilder.forTarget(recipient.getAddress()).usePlaintext().build();
+            for (NodeReference node : kClosest) {
+                ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
                 Kademlia.StoreRequest request = Kademlia.StoreRequest.newBuilder()
                         .setKey(keyHash.toString())
                         .setValue(value)
@@ -454,8 +453,8 @@ public class KademliaNode {
                     public void onNext(Kademlia.StoreResponse storeResponse) {}
                     @Override
                     public void onError(Throwable throwable) {
-                        logger.error("[{}]  republish: Error while storing key[{}] on node[{}]: {}", self, keyHash, recipient, throwable.toString());
-                        // TODO: remove node ?
+                        logger.error("[{}]  republish: Error while storing key[{}] on node[{}]: {}", self, keyHash, node, throwable.toString());
+                        routingTable.remove(node);
                         latch.countDown();
                         channel.shutdown();
                     }
@@ -514,7 +513,7 @@ public class KademliaNode {
 
                 @Override
                 public void onError(Throwable t) {
-                    // TODO: remove node ?
+                    routingTable.remove(node);
                     logger.error("[{}]  RETRIEVE: Error while finding node[{}]: {}", self, node, t.toString());
                     latch.countDown();
                     channel.shutdown();
@@ -566,7 +565,7 @@ public class KademliaNode {
 
                 @Override
                 public void onError(Throwable throwable) {
-                    // TODO: remove node ?
+                    routingTable.remove(node);
                     logger.error("[{}]  DELETE: Error while finding node[{}]: {}", self, node, throwable.toString());
                     latch.countDown();
                     channel.shutdown();
@@ -602,10 +601,6 @@ public class KademliaNode {
      * Server-side of Kademlia node
      */
     private class KademliaNodeServer extends KademliaServiceGrpc.KademliaServiceImplBase {
-
-        // TODO: When a Kademlia node receives any message (request or reply) from another node, it updates the
-        //  appropriate k-bucket for the sender’s node ID
-
 
         /**
          * Initiated on joining node, sent to Booststrap node

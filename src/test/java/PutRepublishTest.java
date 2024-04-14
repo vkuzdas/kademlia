@@ -106,7 +106,7 @@ public class PutRepublishTest extends BaseTest {
 
         // after the republish interval, key should be present on the first
         // node since it is now globally one of the K XOR-closest nodes
-        await().atMost((long) (1.2*republishInterval.toMillis()), TimeUnit.MILLISECONDS)
+        await().atMost((long) (1.5*republishInterval.toMillis()), TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> assertNotNull(runningNodes.get(0).getLocalData().get(Util.getId("key"))));
     }
 

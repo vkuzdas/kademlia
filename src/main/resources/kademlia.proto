@@ -10,15 +10,6 @@ message LookupRequest {
   NodeReference sender = 3;
 }
 
-message MoveKeysRequest {
-  NodeReference sender = 1;
-  string joiningNodeId = 2;
-}
-
-message MoveKeysResponse {
-  repeated Entry entries = 1;
-}
-
 message Entry {
   string key = 1;
   string value = 2;
@@ -84,7 +75,6 @@ message DeleteResponse {
 
 service KademliaService {
   rpc PromptNodeLookup(LookupRequest) returns (LookupResponse) {}
-  rpc MoveKeys(MoveKeysRequest) returns (MoveKeysResponse) {}
 
   rpc FindNode(FindNodeRequest) returns (FindNodeResponse) {}
 

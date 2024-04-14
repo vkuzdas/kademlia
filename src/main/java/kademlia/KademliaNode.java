@@ -127,7 +127,7 @@ public class KademliaNode {
                 .build();
     }
 
-    @VisibleForTesting
+//    @VisibleForTesting
     public RoutingTable getRoutingTable() {
         return routingTable;
     }
@@ -303,29 +303,6 @@ public class KademliaNode {
         return k_best;
     }
 
-    /**
-     * Remove and return keys with XOR-distance lesser to targetId than to selfId <br>
-     * Since each key is placed according to XOR distance, whole map has to be iterated over to see which keys are closer to the lastly joined node
-     */
-    private List<Map.Entry<BigInteger, String>> extractKeys(BigInteger targetId) {
-        List<Map.Entry<BigInteger, String>> extracted = new ArrayList<>();
-
-        synchronized (localData) {
-            localData.forEach((k, v) -> {
-                BigInteger currDistance = k.xor(self.getId());
-                BigInteger joiningNodeDistance = k.xor(targetId);
-
-                // extract nodes XOR-closer to joining node
-                if (joiningNodeDistance.compareTo(currDistance) <= 0) {
-                    extracted.add(new AbstractMap.SimpleEntry<>(k, v));
-                }
-
-            });
-            extracted.forEach(e -> localData.remove(e.getKey()));
-        }
-
-        return extracted;
-    }
 
     private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
         return collection.stream()
@@ -372,6 +349,7 @@ public class KademliaNode {
 
                     @Override
                     public void onCompleted() {
+                        // TODO: routingTable.insert()???
                         latch.countDown();
                         channel.shutdown();
                     }
@@ -401,17 +379,44 @@ public class KademliaNode {
         }
 
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
+        CountDownLatch latch = new CountDownLatch(kClosest.size());
 
-        kClosest.forEach(node -> {
+        for (NodeReference node : kClosest) {
+            if (node.equals(self)) {
+                putAndSchedule(keyHash, value);
+                latch.countDown();
+                continue;
+            }
+
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
             Kademlia.StoreRequest request = Kademlia.StoreRequest.newBuilder()
                     .setKey(keyHash.toString())
                     .setValue(value)
                     .setSender(self.toProto())
                     .build();
-            Kademlia.StoreResponse response = KademliaServiceGrpc.newBlockingStub(channel).store(request);
-            channel.shutdown();
-        });
+
+            KademliaServiceGrpc.newStub(channel).store(request, new StreamObserver<Kademlia.StoreResponse>() {
+                @Override
+                public void onNext(Kademlia.StoreResponse storeResponse) {}
+                @Override
+                public void onError(Throwable throwable) {
+                    logger.error("[{}]  STORE: Error while storing key[{}] on node[{}]: {}", self, keyHash, node, throwable.toString());
+                    routingTable.remove(node);
+                    latch.countDown();
+                    channel.shutdown();
+                }
+                @Override
+                public void onCompleted() {
+                    latch.countDown();
+                    channel.shutdown();
+                }
+            });
+        }
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            logger.error("[{}]  Waiting for async calls interrupted", self, e);
+        }
     }
 
     private void putAndSchedule(BigInteger keyHash, String value) {
@@ -617,22 +622,6 @@ public class KademliaNode {
             Kademlia.LookupResponse.Builder response = Kademlia.LookupResponse.newBuilder()
                     .addAllFoundNodes(kClosest.stream().map(NodeReference::toProto).collect(Collectors.toList()));
 
-            responseObserver.onNext(response.build());
-            responseObserver.onCompleted();
-        }
-
-        @Override
-        public void moveKeys(Kademlia.MoveKeysRequest request, StreamObserver<Kademlia.MoveKeysResponse> responseObserver) {
-            routingTable.insert(new NodeReference(request.getSender()));
-
-            Kademlia.MoveKeysResponse.Builder response = Kademlia.MoveKeysResponse.newBuilder();
-            extractKeys(new BigInteger(request.getJoiningNodeId()))
-                    .forEach(entry -> {
-                        response.addEntries(Kademlia.Entry.newBuilder()
-                                .setKey(entry.getKey().toString())
-                                .setValue(entry.getValue())
-                                .build());
-            });
             responseObserver.onNext(response.build());
             responseObserver.onCompleted();
         }

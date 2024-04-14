@@ -17,6 +17,7 @@ public class DropNodeTest extends BaseTest {
      */
     @Test
     @Disabled("Does not work in github CI for some reason")
+    // TODO: Fix
     public void testKBucketDropsNode() throws IOException {
         KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
         runningNodes.add(bootstrap);

@@ -505,7 +505,11 @@ public class KademliaNode {
             KademliaServiceGrpc.newStub(channel).retrieve(request.build(), new StreamObserver<Kademlia.RetrieveResponse>() {
                 @Override
                 public void onNext(Kademlia.RetrieveResponse response) {
-                    result.add(new Pair(node, response.getValue()));
+                    if (response.getStatus() == Kademlia.Status.SUCCESS) {
+                        result.add(new Pair(node, response.getValue()));
+                    } else if (response.getStatus() == Kademlia.Status.NOT_FOUND) {
+                        result.add(new Pair(node, null));
+                    }
                 }
 
                 @Override

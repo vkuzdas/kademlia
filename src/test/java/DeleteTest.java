@@ -7,6 +7,7 @@ import java.math.BigInteger;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class DeleteTest extends BaseTest {
 
@@ -41,6 +42,6 @@ public class DeleteTest extends BaseTest {
         getRandomRunningNode().delete("key1");
 
         pairs = getRandomRunningNode().get("key1");
-        pairs.forEach(pair -> assertEquals("", pair.value));
+        pairs.forEach(pair -> assertNull(null, pair.value));
     }
 }

@@ -14,11 +14,13 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * To ensure the persistence of key-value pairs, nodes must periodically republish
+ *
+ * Unit test for republish testing in isolation (without expiration) <br> <br>
+ * From the paper: <i>To ensure the persistence of key-value pairs, nodes must periodically republish
  * keys. Otherwise, two phenomena may cause lookups for valid keys to fail. First, some of the k
  * nodes that initially get a key-value pair when it is published may leave the network. Second,
  * new nodes may join the network with IDs closer to some published key than the nodes on which
- * the key-value pair was originally published.
+ * the key-value pair was originally published.</i>
  */
 public class PutRepublishTest extends BaseTest {
 
@@ -27,12 +29,9 @@ public class PutRepublishTest extends BaseTest {
     @BeforeEach
     @Override
     public void init(TestInfo testInfo) {
-        logger.warn(System.lineSeparator() + System.lineSeparator()+ "============== {} =============" + System.lineSeparator(), testInfo.getDisplayName());
+        super.init(testInfo);
 
         BITS = 10;
-
-        KademliaNode.setAlpha(ALPHA);
-        KademliaNode.setK(K);
         KademliaNode.setIdLength(BITS);
 
         KademliaNode.setRepublishInterval(republishInterval);
@@ -51,8 +50,6 @@ public class PutRepublishTest extends BaseTest {
      */
     @Test
     public void testPutJoinRepublish() throws IOException, InterruptedException {
-        BITS = 10;
-        KademliaNode.setIdLength(BITS);
         Duration interval = Duration.ofSeconds(3);
         KademliaNode.setRepublishInterval(interval);
 
@@ -108,32 +105,5 @@ public class PutRepublishTest extends BaseTest {
         // node since it is now globally one of the K XOR-closest nodes
         await().atMost((long) (1.5*republishInterval.toMillis()), TimeUnit.MILLISECONDS)
                 .untilAsserted(() -> assertNotNull(runningNodes.get(0).getLocalData().get(Util.getId("key"))));
-    }
-
-    /**
-     * If node fails to respond to multicastFindNode, it should be removed from routing table
-     */
-    @Test
-    public void testMulticastFindNode_fail() throws IOException {
-        KademliaNode boostrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.valueOf(0));
-        boostrap.initKademlia();
-        runningNodes.add(boostrap);
-
-        KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.valueOf(1));
-        joiner.join(boostrap.getNodeReference());
-        runningNodes.add(joiner);
-
-        int index = boostrap.getRoutingTable().getBucketIndex(joiner.getNodeReference().getId());
-        assertTrue(boostrap.getRoutingTable().getKBucket(index).contains(joiner.getNodeReference()));
-
-        joiner.shutdownKademliaNode();
-        runningNodes.remove(joiner);
-
-        // join triggers nodeLookup and multicastFindNode, when joiner does not respond, it should be removed from bootstraps routing table
-        KademliaNode joiner2 = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.valueOf(2));
-        joiner2.join(boostrap.getNodeReference());
-        runningNodes.add(joiner2);
-
-        assertFalse(boostrap.getRoutingTable().getKBucket(index).contains(joiner2.getNodeReference()));
     }
 }

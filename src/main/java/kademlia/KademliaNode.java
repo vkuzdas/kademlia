@@ -32,11 +32,17 @@ public class KademliaNode {
     private final Map<BigInteger, String> localData = Collections.synchronizedMap(new HashMap<>());
 
     /**
-     * Republish task handle for cancellation
+     * Republish task handle for cancellation/rescheduling
      */
     private final Map<BigInteger, ScheduledFuture<?>> republishTasks = Collections.synchronizedMap(new HashMap<>());
 
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(5); // pooled
+    // TODO: Expiration goes against single node publish optimization?
+    /**
+     * Expiration task handle for cancellation/rescheduling
+     */
+    private final Map<BigInteger, ScheduledFuture<?>> expireTasks = Collections.synchronizedMap(new HashMap<>());
+
+    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(5);
 
 
     /**
@@ -67,6 +73,12 @@ public class KademliaNode {
      * Since this implementation runs mainly locally, we need to 'desynchronize' the republishing intervals
      */
     private static Duration republishInterval = Duration.ofMinutes(15);
+
+    /**
+     * Time after which a key/value pair expires; this is a time-to-live (TTL) from the original publication date
+     */
+    private static Duration expireInterval = Duration.ofMinutes(15).plus(Duration.ofSeconds(10));
+
     /**
      * Whether to <b>forcefully</b> desynchronize republishing intervals. <br>
      * Kademlia paper presents republishing optimization in which only the first republishing node republishes key. This however requires network delay assumption. By setting desynchronization to true, Node simulates network delay under local conditions.
@@ -84,6 +96,11 @@ public class KademliaNode {
     @VisibleForTesting
     public static void setRepublishInterval(Duration duration) {
         republishInterval = duration;
+    }
+
+    @VisibleForTesting
+    public static void setExpireInterval(Duration duration) {
+        expireInterval = duration;
     }
 
     /**
@@ -380,7 +397,7 @@ public class KademliaNode {
         BigInteger keyHash = getId(key);
 
         if(routingTable.getSize() == 0) {
-            putAndScheduleRepublish(keyHash, value);
+            putAndSchedule(keyHash, value);
             return;
         }
 
@@ -398,15 +415,22 @@ public class KademliaNode {
         });
     }
 
-    private void putAndScheduleRepublish(BigInteger keyHash, String value) {
+    private void putAndSchedule(BigInteger keyHash, String value) {
         localData.put(keyHash, value);
 
-        // simulate network delay under local conditions to allow for opt-1
         ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
         republishTasks.put(keyHash, republishTimer);
+
+        Runnable expireTask = () -> {
+            logger.trace("[{}]  Key[{}] expired!", self, keyHash);
+            localData.remove(keyHash);
+        };
+        ScheduledFuture<?> expireTimer = executor.schedule(expireTask, expireInterval.toMillis(), TimeUnit.MILLISECONDS);
+        expireTasks.put(keyHash, expireTimer);
     }
 
     private long getRepublishDelay() {
+        // simulate network delay under local conditions to allow for single node republish
         return desynchronizeRepublishInterval ? simulatedNetworkDelay + republishInterval.toMillis() : republishInterval.toMillis();
     }
 
@@ -503,6 +527,12 @@ public class KademliaNode {
         });
     }
 
+    private void deleteAndDeschedule(BigInteger keyhash) {
+        localData.remove(keyhash);
+        republishTasks.get(keyhash).cancel(true);
+        expireTasks.get(keyhash).cancel(true);
+    }
+
 
     ////////////////////////////////
     ///  SERVER-SIDE PROCESSING  ///
@@ -564,7 +594,7 @@ public class KademliaNode {
             String value = request.getValue();
 
             if (!localData.containsKey(key)) {
-                putAndScheduleRepublish(key, value);
+                putAndSchedule(key, value);
             }
             else {
                 // opt-1: if key exists, postpone republish

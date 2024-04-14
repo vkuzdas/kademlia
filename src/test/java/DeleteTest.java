@@ -12,11 +12,11 @@ public class DeleteTest extends BaseTest {
 
 
     /**
-     * 1. Join with K+1 nodes
-     * 2. Put a key on them
-     * 3. Validate presence
-     * 4. Delete the key
-     * 5. Validate absence
+     * 1. Join with K+1 nodes <br>
+     * 2. Put a key on them <br>
+     * 3. Validate presence <br>
+     * 4. Delete the key <br>
+     * 5. Validate absence <br>
      */
     @Test
     public void testDelete_simple() throws IOException {

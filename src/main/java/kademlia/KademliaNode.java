@@ -518,7 +518,8 @@ public class KademliaNode {
 
             if (node.equals(self)){
                 deleteAndDeschedule(keyHash);
-                return;
+                latch.countDown();
+                continue;
             }
 
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();

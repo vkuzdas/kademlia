@@ -513,9 +513,10 @@ public class KademliaNode {
 
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
 
+        // TODO: can be done in parallel
         kClosest.forEach(node -> {
             if (node.equals(self)){
-                localData.remove(keyHash);
+                deleteAndDeschedule(keyHash);
                 return;
             }
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
@@ -679,7 +680,7 @@ public class KademliaNode {
                         .setStatus(Kademlia.Status.NOT_FOUND)
                         .build();
             } else {
-                localData.remove(key);
+                deleteAndDeschedule(key);
                 response = Kademlia.DeleteResponse.newBuilder()
                         .setStatus(Kademlia.Status.SUCCESS)
                         .build();

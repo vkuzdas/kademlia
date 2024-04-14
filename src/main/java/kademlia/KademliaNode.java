@@ -487,18 +487,48 @@ public class KademliaNode {
 
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
         List<Pair> result = new ArrayList<>();
+        CountDownLatch latch = new CountDownLatch(kClosest.size());
 
-        // TODO: can be done in parallel
-        kClosest.forEach(node -> {
+        for(NodeReference node : kClosest) {
+
+            if (node.equals(self)) {
+                result.add(new Pair(self, localData.get(keyHash)));
+                latch.countDown();
+                continue;
+            }
+
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
             Kademlia.RetrieveRequest.Builder request = Kademlia.RetrieveRequest.newBuilder()
                     .setSender(self.toProto())
                     .setKey(keyHash.toString());
-            Kademlia.RetrieveResponse response = KademliaServiceGrpc.newBlockingStub(channel).retrieve(request.build());
-            channel.shutdown();
 
-            result.add(new Pair(node, response.getValue()));
-        });
+            KademliaServiceGrpc.newStub(channel).retrieve(request.build(), new StreamObserver<Kademlia.RetrieveResponse>() {
+                @Override
+                public void onNext(Kademlia.RetrieveResponse response) {
+                    result.add(new Pair(node, response.getValue()));
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                    // TODO: remove node ?
+                    logger.error("[{}]  RETRIEVE: Error while finding node[{}]: {}", self, node, t.toString());
+                    latch.countDown();
+                    channel.shutdown();
+                }
+
+                @Override
+                public void onCompleted() {
+                    latch.countDown();
+                    channel.shutdown();
+                }
+            });
+        }
+
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            logger.error("[{}]  Waiting for async calls interrupted", self, e);
+        }
 
         return result;
     }

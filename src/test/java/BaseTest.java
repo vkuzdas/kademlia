@@ -34,6 +34,7 @@ public class BaseTest {
         KademliaNode.setIdLength(BITS);
         KademliaNode.setRepublishInterval(Duration.ofDays(1)); // turn off republishing
         KademliaNode.setExpireInterval(Duration.ofDays(1)); // turn off expiring
+        KademliaNode.setRefreshInterval(Duration.ofDays(1)); // turn off refreshing
     }
 
     /**

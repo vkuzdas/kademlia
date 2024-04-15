@@ -179,6 +179,11 @@ public class KademliaNode {
         expireInterval = duration;
     }
 
+    @VisibleForTesting
+    public static void setRefreshInterval(Duration duration) {
+        refreshInterval = duration;
+    }
+
 
     @VisibleForTesting
     public RoutingTable getRoutingTable() {
@@ -214,8 +219,7 @@ public class KademliaNode {
     public void shutdownKademliaNode() {
         logger.warn("[{}]  Initiated node shutdown!", self);
         stopServer();
-        republishTasks.forEach((k, v) -> v.cancel(true));
-        executor.shutdownNow();
+        descheduleAll();
     }
 
     public void stopServer() {
@@ -223,6 +227,13 @@ public class KademliaNode {
             server.shutdownNow();
             logger.warn("[{}]  Server stopped, listening on {}", self, self.port);
         }
+    }
+
+    private void descheduleAll() {
+        republishTasks.forEach((k, v) -> v.cancel(true));
+        refreshTasks.forEach((k, v) -> v.cancel(true));
+        expireTasks.forEach((k, v) -> v.cancel(true));
+        executor.shutdownNow();
     }
 
 
@@ -240,7 +251,7 @@ public class KademliaNode {
         logger.warn("[{}]  Joining KadNetwork!", self);
 
 //        insertIntoRoutingTable(bootstrap);
-        routingTable.insert(bootstrap);
+        insertIntoRoutingTable(bootstrap);
 
         // prompt bootstrap to do lookup for an ID
         ManagedChannel channel = ManagedChannelBuilder.forTarget(bootstrap.getAddress()).usePlaintext().build();
@@ -253,7 +264,7 @@ public class KademliaNode {
         Kademlia.LookupResponse response = KademliaServiceGrpc.newBlockingStub(channel).promptNodeLookup(request);
         channel.shutdown();
 
-        response.getFoundNodesList().forEach(n -> routingTable.insert(new NodeReference(n)));
+        response.getFoundNodesList().forEach(n -> insertIntoRoutingTable(new NodeReference(n)));
 
         // refresh all KB further away than the B's KB (refresh = lookup for random id in bucket range)
         // Note: some sources suggest to refresh all KB
@@ -363,7 +374,7 @@ public class KademliaNode {
 
                     @Override
                     public void onCompleted() {
-                        routingTable.insert(recipient);
+                        insertIntoRoutingTable(recipient);
                         latch.countDown();
                         channel.shutdown();
                     }
@@ -421,7 +432,7 @@ public class KademliaNode {
                 }
                 @Override
                 public void onCompleted() {
-                    routingTable.insert(node);
+                    insertIntoRoutingTable(node);
                     latch.countDown();
                     channel.shutdown();
                 }
@@ -481,7 +492,7 @@ public class KademliaNode {
 
                 @Override
                 public void onCompleted() {
-                    routingTable.insert(node);
+                    insertIntoRoutingTable(node);
                     latch.countDown();
                     channel.shutdown();
                 }
@@ -537,7 +548,7 @@ public class KademliaNode {
 
                 @Override
                 public void onCompleted() {
-                    routingTable.insert(node);
+                    insertIntoRoutingTable(node);
                     latch.countDown();
                     channel.shutdown();
                 }
@@ -581,7 +592,7 @@ public class KademliaNode {
                     }
                     @Override
                     public void onCompleted() {
-                        routingTable.insert(node);
+                        insertIntoRoutingTable(node);
                         latch.countDown();
                         channel.shutdown();
                     }
@@ -663,7 +674,7 @@ public class KademliaNode {
             logger.trace("[{}]  Node lookup initiated from [{}]", self, joiningNode);
 
             List<NodeReference> kClosest = nodeLookup(new BigInteger(request.getTargetId()), request.getJoiningNode());
-            routingTable.insert(joiningNode); // break the "insert most recently contacted" rule to not query the joining node
+            insertIntoRoutingTable(joiningNode); // break the "insert most recently contacted" rule to not query the joining node
 
             Kademlia.LookupResponse.Builder response = Kademlia.LookupResponse.newBuilder()
                     .addAllFoundNodes(kClosest.stream().map(NodeReference::toProto).collect(Collectors.toList()));
@@ -677,7 +688,7 @@ public class KademliaNode {
          */
         @Override
         public void store(Kademlia.StoreRequest request, StreamObserver<Kademlia.StoreResponse> responseObserver) {
-            routingTable.insert(new NodeReference(request.getSender()));
+            insertIntoRoutingTable(new NodeReference(request.getSender()));
             logger.trace("[{}]  Received STORE rpc from {}", self, request.getSender().getPort());
 
             BigInteger key = new BigInteger(request.getKey());
@@ -704,7 +715,7 @@ public class KademliaNode {
          */
         @Override
         public void retrieve(Kademlia.RetrieveRequest request, StreamObserver<Kademlia.RetrieveResponse> responseObserver) {
-            routingTable.insert(new NodeReference(request.getSender()));
+            insertIntoRoutingTable(new NodeReference(request.getSender()));
 
             BigInteger key = new BigInteger(request.getKey());
             String value = localData.get(key);
@@ -730,14 +741,14 @@ public class KademliaNode {
          */
         @Override
         public void findNode(Kademlia.FindNodeRequest request, StreamObserver<Kademlia.FindNodeResponse> responseObserver) {
-            routingTable.insert(new NodeReference(request.getSender()));
+            insertIntoRoutingTable(new NodeReference(request.getSender()));
 //            logger.trace("[{}]  Received FIND_NODE rpc", self);
 
             BigInteger targetId = new BigInteger(request.getTargetId());
             List<NodeReference> kClosest = routingTable.findKClosest(targetId);
 
             if (request.hasJoiningNode()) {
-                routingTable.insert(new NodeReference(request.getJoiningNode()));
+                insertIntoRoutingTable(new NodeReference(request.getJoiningNode()));
             }
 
             Kademlia.FindNodeResponse.Builder response = Kademlia.FindNodeResponse.newBuilder();
@@ -757,7 +768,7 @@ public class KademliaNode {
 
         @Override
         public void delete(Kademlia.DeleteRequest request, StreamObserver<Kademlia.DeleteResponse> responseObserver) {
-            routingTable.insert(new NodeReference(request.getSender()));
+            insertIntoRoutingTable(new NodeReference(request.getSender()));
 
             BigInteger key = new BigInteger(request.getKey());
             String value = localData.get(key);

@@ -260,7 +260,7 @@ public class KademliaNode {
         int bootstrapIndex = routingTable.getBucketIndex(bootstrap.getId());
         logger.debug("[{}]  JOIN - initiating refresh from {}th KB", self, bootstrapIndex);
         for (int i = bootstrapIndex+1; i < ID_LENGTH; i++) {
-            nodeLookup(Util.randomWithinBucket(i), self.toProto()).stream().limit(K_PARAMETER).forEach(routingTable::insert);
+            refreshBucket(i);
         }
 
         logger.warn("[{}]  Joined KadNetwork!", self);
@@ -621,14 +621,22 @@ public class KademliaNode {
         expireTasks.get(keyhash).cancel(true);
     }
 
-//    private void insertIntoRoutingTable(NodeReference bootstrap) {
-//        int bucketIndex = routingTable.getBucketIndex(bootstrap.getId());
-//        routingTable.insert(bootstrap);
-//        // schedule/reschedule bucketRefresh
-//        Runnable task = () -> nodeLookup()
-//        ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(getRefreshTask(bucketIndex), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
-//        refreshTasks.put(bucketIndex, refreshTimer);
-//    }
+    private void insertIntoRoutingTable(NodeReference node) {
+        int bucketIndex = routingTable.getBucketIndex(node.getId());
+        routingTable.insert(node);
+
+        // possibly deschedule refresh
+        if (refreshTasks.containsKey(bucketIndex)) {
+            refreshTasks.get(bucketIndex).cancel(true);
+        }
+        // schedule refresh
+        ScheduledFuture<?> refreshTimer = executor.schedule(() -> refreshBucket(bucketIndex), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
+        refreshTasks.put(bucketIndex, refreshTimer);
+    }
+
+    private void refreshBucket(int index) {
+        nodeLookup(randomWithinBucket(index), null).forEach(this::insertIntoRoutingTable);
+    }
 
     private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
         return collection.stream()

@@ -4,6 +4,7 @@ import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Random;
 
 public class Util {
 
@@ -28,6 +29,12 @@ public class Util {
 
     public static String decToBin(BigInteger input) {
         return input.toString(2);
+    }
+
+    public static BigInteger randomWithinBucket(int bucketIndex) {
+        BigInteger number = new BigInteger(bucketIndex+1, new Random());
+        number = number.setBit(bucketIndex);
+        return number;
     }
 
     public static BigInteger getId(String address) {

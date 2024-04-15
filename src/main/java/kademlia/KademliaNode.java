@@ -42,6 +42,11 @@ public class KademliaNode {
      */
     private final Map<BigInteger, ScheduledFuture<?>> expireTasks = Collections.synchronizedMap(new HashMap<>());
 
+    /**
+     * Refresh k-bucket that have not been queried in the last refreshInterval
+     */
+    private final Map<Integer, ScheduledFuture<?>> refreshTasks = Collections.synchronizedMap(new HashMap<>());
+
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(5);
 
 
@@ -78,6 +83,11 @@ public class KademliaNode {
      * Time after which a key/value pair expires; this is a time-to-live (TTL) from the original publication date
      */
     private static Duration expireInterval = Duration.ofMinutes(15).plus(Duration.ofSeconds(10));
+
+    /**
+     * Time after which node should refresh (send random id query) otherwise unqueried k-bucket
+     */
+    private static Duration refreshInterval = Duration.ofMinutes(10);
 
     /**
      * Whether to <b>forcefully</b> desynchronize republishing intervals. <br>
@@ -229,6 +239,7 @@ public class KademliaNode {
 
         logger.warn("[{}]  Joining KadNetwork!", self);
 
+//        insertIntoRoutingTable(bootstrap);
         routingTable.insert(bootstrap);
 
         // prompt bootstrap to do lookup for an ID
@@ -249,12 +260,7 @@ public class KademliaNode {
         int bootstrapIndex = routingTable.getBucketIndex(bootstrap.getId());
         logger.debug("[{}]  JOIN - initiating refresh from {}th KB", self, bootstrapIndex);
         for (int i = bootstrapIndex+1; i < ID_LENGTH; i++) {
-            BigInteger rangeStart = BigInteger.valueOf(2).pow(i);
-//            logger.trace("[{}]  JOIN - refresh: looking up {}", self, rangeStart);
-            List<NodeReference> kBestInRange = nodeLookup(rangeStart, self.toProto());
-
-            // nodeLookup with specified joiningNode returns all nodes found during the lookup
-            kBestInRange.stream().limit(K_PARAMETER).forEach(routingTable::insert);
+            nodeLookup(Util.randomWithinBucket(i), self.toProto()).stream().limit(K_PARAMETER).forEach(routingTable::insert);
         }
 
         logger.warn("[{}]  Joined KadNetwork!", self);
@@ -548,25 +554,6 @@ public class KademliaNode {
 
     ////  Utility methods  ////
 
-    private void putAndSchedule(BigInteger keyHash, String value) {
-        localData.put(keyHash, value);
-
-        ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
-        republishTasks.put(keyHash, republishTimer);
-
-        Runnable expireTask = () -> {
-            logger.trace("[{}]  Key[{}] expired!", self, keyHash);
-            localData.remove(keyHash);
-        };
-        ScheduledFuture<?> expireTimer = executor.schedule(expireTask, expireInterval.toMillis(), TimeUnit.MILLISECONDS);
-        expireTasks.put(keyHash, expireTimer);
-    }
-
-    private long getRepublishDelay() {
-        // simulate network delay under local conditions to allow for single node republish
-        return desynchronizeRepublishInterval ? simulatedNetworkDelay + republishInterval.toMillis() : republishInterval.toMillis();
-    }
-
     private Runnable getRepublishTask(BigInteger keyHash, String value) {
         return () -> {
             List<NodeReference> kClosest = nodeLookup(keyHash, null);
@@ -609,11 +596,23 @@ public class KademliaNode {
         };
     }
 
-    private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
-        return collection.stream()
-                .map(n -> targetId.subtract(n.getId()).abs())
-                .min(Comparator.naturalOrder())
-                .orElse(null);
+    private long getRepublishDelay() {
+        // simulate network delay under local conditions to allow for single node republish
+        return desynchronizeRepublishInterval ? simulatedNetworkDelay + republishInterval.toMillis() : republishInterval.toMillis();
+    }
+
+    private void putAndSchedule(BigInteger keyHash, String value) {
+        localData.put(keyHash, value);
+
+        ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
+        republishTasks.put(keyHash, republishTimer);
+
+        Runnable expireTask = () -> {
+            logger.trace("[{}]  Key[{}] expired!", self, keyHash);
+            localData.remove(keyHash);
+        };
+        ScheduledFuture<?> expireTimer = executor.schedule(expireTask, expireInterval.toMillis(), TimeUnit.MILLISECONDS);
+        expireTasks.put(keyHash, expireTimer);
     }
 
     private void deleteAndDeschedule(BigInteger keyhash) {
@@ -622,6 +621,21 @@ public class KademliaNode {
         expireTasks.get(keyhash).cancel(true);
     }
 
+//    private void insertIntoRoutingTable(NodeReference bootstrap) {
+//        int bucketIndex = routingTable.getBucketIndex(bootstrap.getId());
+//        routingTable.insert(bootstrap);
+//        // schedule/reschedule bucketRefresh
+//        Runnable task = () -> nodeLookup()
+//        ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(getRefreshTask(bucketIndex), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
+//        refreshTasks.put(bucketIndex, refreshTimer);
+//    }
+
+    private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
+        return collection.stream()
+                .map(n -> targetId.subtract(n.getId()).abs())
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+    }
 
     ////////////////////////////////
     ///  SERVER-SIDE PROCESSING  ///

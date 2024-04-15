@@ -16,6 +16,7 @@ import java.math.BigInteger;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static kademlia.Util.*;
@@ -25,6 +26,8 @@ public class KademliaNode {
     private static final Logger logger = LoggerFactory.getLogger(KademliaNode.class);
 
     private final NodeReference self;
+
+    private final ReentrantLock lock = new ReentrantLock();
 
     /**
      * Local data storage
@@ -45,9 +48,9 @@ public class KademliaNode {
     /**
      * Refresh k-bucket that have not been queried in the last refreshInterval
      */
-    private final Map<Integer, ScheduledFuture<?>> refreshTasks = Collections.synchronizedMap(new HashMap<>());
+    private final Map<Integer, ScheduledFuture<?>> refreshTasks = new HashMap<>();
 
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(5);
+    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
 
 
     /**
@@ -204,6 +207,7 @@ public class KademliaNode {
 
     public void initKademlia() throws IOException {
         startServer();
+        startRefreshing();
     }
 
     private void startServer() throws IOException {
@@ -229,6 +233,14 @@ public class KademliaNode {
         }
     }
 
+    private void startRefreshing() {
+        for (int i = 0; i < ID_LENGTH; i++) {
+            final int finalI = i;
+            ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(finalI), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
+            refreshTasks.put(i, refreshTimer);
+        }
+    }
+
     private void descheduleAll() {
         republishTasks.forEach((k, v) -> v.cancel(true));
         refreshTasks.forEach((k, v) -> v.cancel(true));
@@ -250,7 +262,6 @@ public class KademliaNode {
 
         logger.warn("[{}]  Joining KadNetwork!", self);
 
-//        insertIntoRoutingTable(bootstrap);
         insertIntoRoutingTable(bootstrap);
 
         // prompt bootstrap to do lookup for an ID
@@ -273,7 +284,7 @@ public class KademliaNode {
         for (int i = bootstrapIndex+1; i < ID_LENGTH; i++) {
             refreshBucket(i);
         }
-
+        startRefreshing();
         logger.warn("[{}]  Joined KadNetwork!", self);
     }
 
@@ -384,6 +395,7 @@ public class KademliaNode {
             try {
                 latch.await();
             } catch (InterruptedException e) {
+                e.printStackTrace();
                 logger.error("[{}]  Waiting for async calls interrupted", self, e);
             }
 
@@ -636,16 +648,21 @@ public class KademliaNode {
         int bucketIndex = routingTable.getBucketIndex(node.getId());
         routingTable.insert(node);
 
-        // possibly deschedule refresh
-        if (refreshTasks.containsKey(bucketIndex)) {
-            refreshTasks.get(bucketIndex).cancel(true);
+        lock.lock();
+        try {
+            if (refreshTasks.get(bucketIndex) != null) {
+                refreshTasks.get(bucketIndex).cancel(false);
+                refreshTasks.remove(bucketIndex);
+                ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(bucketIndex), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
+                refreshTasks.put(bucketIndex, refreshTimer);
+            }
+        } finally {
+            lock.unlock();
         }
-        // schedule refresh
-        ScheduledFuture<?> refreshTimer = executor.schedule(() -> refreshBucket(bucketIndex), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
-        refreshTasks.put(bucketIndex, refreshTimer);
     }
 
     private void refreshBucket(int index) {
+        logger.trace("[{}]  Refreshing bucket {}", self, index);
         nodeLookup(randomWithinBucket(index), null).forEach(this::insertIntoRoutingTable);
     }
 

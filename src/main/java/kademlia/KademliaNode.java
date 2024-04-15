@@ -620,8 +620,7 @@ public class KademliaNode {
             logger.trace("[{}]  Node lookup initiated from [{}]", self, joiningNode);
 
             List<NodeReference> kClosest = nodeLookup(new BigInteger(request.getTargetId()), request.getJoiningNode());
-
-            routingTable.insert(joiningNode);
+            routingTable.insert(joiningNode); // break the "insert most recently contacted" rule to not query the joining node
 
             Kademlia.LookupResponse.Builder response = Kademlia.LookupResponse.newBuilder()
                     .addAllFoundNodes(kClosest.stream().map(NodeReference::toProto).collect(Collectors.toList()));
@@ -688,12 +687,11 @@ public class KademliaNode {
          */
         @Override
         public void findNode(Kademlia.FindNodeRequest request, StreamObserver<Kademlia.FindNodeResponse> responseObserver) {
+            routingTable.insert(new NodeReference(request.getSender()));
 //            logger.trace("[{}]  Received FIND_NODE rpc", self);
 
             BigInteger targetId = new BigInteger(request.getTargetId());
             List<NodeReference> kClosest = routingTable.findKClosest(targetId);
-
-            routingTable.insert(new NodeReference(request.getSender()));
 
             if (request.hasJoiningNode()) {
                 routingTable.insert(new NodeReference(request.getJoiningNode()));

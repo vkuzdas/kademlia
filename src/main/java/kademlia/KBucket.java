@@ -36,7 +36,7 @@ public class KBucket {
         if (nodes.size() == MAX_SIZE)  {
             nodes.removeFirst();
             nodes.addLast(newNode);
-            return true;
+            return false;
         }
 
         nodes.addLast(newNode);

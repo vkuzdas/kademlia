@@ -17,6 +17,8 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 import static kademlia.Util.*;
@@ -648,14 +650,20 @@ public class KademliaNode {
         int bucketIndex = routingTable.getBucketIndex(node.getId());
         routingTable.insert(node);
 
-        lock.lock();
-        try {
+        lockWrapper(() -> {
             if (refreshTasks.get(bucketIndex) != null) {
                 refreshTasks.get(bucketIndex).cancel(false);
                 refreshTasks.remove(bucketIndex);
                 ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(bucketIndex), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
                 refreshTasks.put(bucketIndex, refreshTimer);
             }
+        });
+    }
+
+    private void lockWrapper(Runnable action) {
+        lock.lock();
+        try {
+            action.run();
         } finally {
             lock.unlock();
         }

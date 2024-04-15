@@ -127,7 +127,7 @@ public class KademliaNode {
                 .build();
     }
 
-//    @VisibleForTesting
+    @VisibleForTesting
     public RoutingTable getRoutingTable() {
         return routingTable;
     }
@@ -349,7 +349,7 @@ public class KademliaNode {
 
                     @Override
                     public void onCompleted() {
-                        // TODO: routingTable.insert()???
+                        routingTable.insert(recipient);
                         latch.countDown();
                         channel.shutdown();
                     }
@@ -407,6 +407,7 @@ public class KademliaNode {
                 }
                 @Override
                 public void onCompleted() {
+                    routingTable.insert(node);
                     latch.countDown();
                     channel.shutdown();
                 }
@@ -465,6 +466,7 @@ public class KademliaNode {
                     }
                     @Override
                     public void onCompleted() {
+                        routingTable.insert(node);
                         latch.countDown();
                         channel.shutdown();
                     }
@@ -526,6 +528,7 @@ public class KademliaNode {
 
                 @Override
                 public void onCompleted() {
+                    routingTable.insert(node);
                     latch.countDown();
                     channel.shutdown();
                 }
@@ -578,6 +581,7 @@ public class KademliaNode {
 
                 @Override
                 public void onCompleted() {
+                    routingTable.insert(node);
                     latch.countDown();
                     channel.shutdown();
                 }

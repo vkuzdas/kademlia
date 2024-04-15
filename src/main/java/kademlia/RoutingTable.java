@@ -64,6 +64,10 @@ public class RoutingTable {
 
     }
 
+    /**
+     * Insert or updateIfPresent
+     * @param newNode
+     */
     public void insert(NodeReference newNode) {
         lock.lock();
         try {

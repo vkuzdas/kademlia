@@ -1,16 +1,12 @@
 import kademlia.KademliaNode;
 import kademlia.NodeReference;
 import kademlia.Util;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.math.BigInteger;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import static kademlia.Util.*;
 import static org.junit.jupiter.api.Assertions.*;

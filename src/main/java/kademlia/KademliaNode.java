@@ -86,37 +86,10 @@ public class KademliaNode {
     private static boolean desynchronizeRepublishInterval = false;
     private final int simulatedNetworkDelay = new Random().nextInt(800)+200;
 
-    /**
-     * Whether to desynchronize republishing intervals
-     */
-    public static void setDesynchronizeRepublishInterval(boolean desync) {
-        desynchronizeRepublishInterval = desync;
-    }
 
-    @VisibleForTesting
-    public static void setRepublishInterval(Duration duration) {
-        republishInterval = duration;
-    }
-
-    @VisibleForTesting
-    public static void setExpireInterval(Duration duration) {
-        expireInterval = duration;
-    }
-
-    /**
-     * There is high probability that new Kad node is inserted in the last KB
-     * which means there would be no refresh. <br>
-     * We need to set custom id for testing purposes.
-     */
-    @VisibleForTesting
-    public KademliaNode(String ip, int port, BigInteger id) {
-        this.self = new NodeReference(ip, port, id);
-        this.routingTable = new RoutingTable(ID_LENGTH, ALPHA_PARAMETER, K_PARAMETER, self);
-
-        server = ServerBuilder.forPort(port)
-                .addService(new KademliaNodeServer())
-                .build();
-    }
+    ///////////////////////////////
+    ///  NODE-STATE INITIATION  ///
+    ///////////////////////////////
 
     public KademliaNode(String ip, int port) {
         this.self = new NodeReference(ip, port);
@@ -127,14 +100,11 @@ public class KademliaNode {
                 .build();
     }
 
-    @VisibleForTesting
-    public RoutingTable getRoutingTable() {
-        return routingTable;
-    }
-
-    @VisibleForTesting
-    public Map<BigInteger, String> getLocalData() {
-        return localData;
+    /**
+     * Whether to desynchronize republishing intervals
+     */
+    public static void setDesynchronizeRepublishInterval(boolean desync) {
+        desynchronizeRepublishInterval = desync;
     }
 
     public NodeReference getNodeReference() {
@@ -174,9 +144,48 @@ public class KademliaNode {
         KademliaNode.K_PARAMETER = k;
     }
 
+    /**
+     * There is high probability that new Kad node is inserted in the last KB
+     * which means there would be no refresh. <br>
+     * We need to set custom id for testing purposes.
+     */
+    @VisibleForTesting
+    public KademliaNode(String ip, int port, BigInteger id) {
+        this.self = new NodeReference(ip, port, id);
+        this.routingTable = new RoutingTable(ID_LENGTH, ALPHA_PARAMETER, K_PARAMETER, self);
+
+        server = ServerBuilder.forPort(port)
+                .addService(new KademliaNodeServer())
+                .build();
+    }
+
+    @VisibleForTesting
+    public static void setRepublishInterval(Duration duration) {
+        republishInterval = duration;
+    }
+
+    @VisibleForTesting
+    public static void setExpireInterval(Duration duration) {
+        expireInterval = duration;
+    }
+
+
+    @VisibleForTesting
+    public RoutingTable getRoutingTable() {
+        return routingTable;
+    }
+
+    @VisibleForTesting
+    public Map<BigInteger, String> getLocalData() {
+        return localData;
+    }
+
+
     ////////////////////////////////
     ///  CLIENT-SIDE PROCESSING  ///
     ////////////////////////////////
+
+    ////  Node run administration  ////
 
     public void initKademlia() throws IOException {
         startServer();
@@ -185,6 +194,11 @@ public class KademliaNode {
     private void startServer() throws IOException {
         server.start();
         logger.warn("[{}]  Server started, listening on {}", self, self.port);
+    }
+
+    public void leave() {
+        logger.warn("[{}]  Leaves the network", self);
+        shutdownKademliaNode();
     }
 
     public void shutdownKademliaNode() {
@@ -197,9 +211,12 @@ public class KademliaNode {
     public void stopServer() {
         if (server != null) {
             server.shutdownNow();
-            logger.warn("Server stopped, listening on {}", self.port);
+            logger.warn("[{}]  Server stopped, listening on {}", self, self.port);
         }
     }
+
+
+    ////  RPC  calls to other nodes  ////
 
     /**
      * When new node J is joining, it contacts bootsrap node B <br>
@@ -242,7 +259,6 @@ public class KademliaNode {
 
         logger.warn("[{}]  Joined KadNetwork!", self);
     }
-
 
     /**
      * Locate K globally-closest nodes to the targetId <br>
@@ -301,14 +317,6 @@ public class KademliaNode {
 
         logger.trace("[{}]  Node lookup finished (whole KB returned)", self);
         return k_best;
-    }
-
-
-    private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
-        return collection.stream()
-                .map(n -> targetId.subtract(n.getId()).abs())
-                .min(Comparator.naturalOrder())
-                .orElse(null);
     }
 
     /**
@@ -420,67 +428,6 @@ public class KademliaNode {
         }
     }
 
-    private void putAndSchedule(BigInteger keyHash, String value) {
-        localData.put(keyHash, value);
-
-        ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
-        republishTasks.put(keyHash, republishTimer);
-
-        Runnable expireTask = () -> {
-            logger.trace("[{}]  Key[{}] expired!", self, keyHash);
-            localData.remove(keyHash);
-        };
-        ScheduledFuture<?> expireTimer = executor.schedule(expireTask, expireInterval.toMillis(), TimeUnit.MILLISECONDS);
-        expireTasks.put(keyHash, expireTimer);
-    }
-
-    private long getRepublishDelay() {
-        // simulate network delay under local conditions to allow for single node republish
-        return desynchronizeRepublishInterval ? simulatedNetworkDelay + republishInterval.toMillis() : republishInterval.toMillis();
-    }
-
-    private Runnable getRepublishTask(BigInteger keyHash, String value) {
-        return () -> {
-            List<NodeReference> kClosest = nodeLookup(keyHash, null);
-            kClosest.remove(self);
-            CountDownLatch latch = new CountDownLatch(kClosest.size());
-
-            logger.debug("[{}]  Asynchronously republishing key {} to k-closest: {}", self, keyHash, kClosest);
-
-            for (NodeReference node : kClosest) {
-                ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
-                Kademlia.StoreRequest request = Kademlia.StoreRequest.newBuilder()
-                        .setKey(keyHash.toString())
-                        .setValue(value)
-                        .setSender(self.toProto())
-                        .build();
-                KademliaServiceGrpc.newStub(channel).store(request, new StreamObserver<Kademlia.StoreResponse>() {
-                    @Override
-                    public void onNext(Kademlia.StoreResponse storeResponse) {}
-                    @Override
-                    public void onError(Throwable throwable) {
-                        logger.error("[{}]  republish: Error while storing key[{}] on node[{}]: {}", self, keyHash, node, throwable.toString());
-                        routingTable.remove(node);
-                        latch.countDown();
-                        channel.shutdown();
-                    }
-                    @Override
-                    public void onCompleted() {
-                        routingTable.insert(node);
-                        latch.countDown();
-                        channel.shutdown();
-                    }
-                });
-            }
-
-            try {
-                latch.await();
-            } catch (InterruptedException e) {
-                logger.error("[{}]  Waiting for async calls interrupted", self, e);
-            }
-        };
-    }
-
     /**
      * Retrieve value associated with the key from the K-closest nodes to the keyhash
      */
@@ -544,6 +491,9 @@ public class KademliaNode {
         return result;
     }
 
+    /**
+     * Delete key-value pair from the K-closest nodes to the keyhash
+     */
     public void delete(String key) {
         BigInteger keyHash = getId(key);
 
@@ -593,6 +543,77 @@ public class KademliaNode {
         } catch (InterruptedException e) {
             logger.error("[{}]  Waiting for async calls interrupted", self, e);
         }
+    }
+
+
+    ////  Utility methods  ////
+
+    private void putAndSchedule(BigInteger keyHash, String value) {
+        localData.put(keyHash, value);
+
+        ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
+        republishTasks.put(keyHash, republishTimer);
+
+        Runnable expireTask = () -> {
+            logger.trace("[{}]  Key[{}] expired!", self, keyHash);
+            localData.remove(keyHash);
+        };
+        ScheduledFuture<?> expireTimer = executor.schedule(expireTask, expireInterval.toMillis(), TimeUnit.MILLISECONDS);
+        expireTasks.put(keyHash, expireTimer);
+    }
+
+    private long getRepublishDelay() {
+        // simulate network delay under local conditions to allow for single node republish
+        return desynchronizeRepublishInterval ? simulatedNetworkDelay + republishInterval.toMillis() : republishInterval.toMillis();
+    }
+
+    private Runnable getRepublishTask(BigInteger keyHash, String value) {
+        return () -> {
+            List<NodeReference> kClosest = nodeLookup(keyHash, null);
+            kClosest.remove(self);
+            CountDownLatch latch = new CountDownLatch(kClosest.size());
+
+            logger.debug("[{}]  Asynchronously republishing key {} to k-closest: {}", self, keyHash, kClosest);
+
+            for (NodeReference node : kClosest) {
+                ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
+                Kademlia.StoreRequest request = Kademlia.StoreRequest.newBuilder()
+                        .setKey(keyHash.toString())
+                        .setValue(value)
+                        .setSender(self.toProto())
+                        .build();
+                KademliaServiceGrpc.newStub(channel).store(request, new StreamObserver<Kademlia.StoreResponse>() {
+                    @Override
+                    public void onNext(Kademlia.StoreResponse storeResponse) {}
+                    @Override
+                    public void onError(Throwable throwable) {
+                        logger.error("[{}]  republish: Error while storing key[{}] on node[{}]: {}", self, keyHash, node, throwable.toString());
+                        routingTable.remove(node);
+                        latch.countDown();
+                        channel.shutdown();
+                    }
+                    @Override
+                    public void onCompleted() {
+                        routingTable.insert(node);
+                        latch.countDown();
+                        channel.shutdown();
+                    }
+                });
+            }
+
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                logger.error("[{}]  Waiting for async calls interrupted", self, e);
+            }
+        };
+    }
+
+    private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
+        return collection.stream()
+                .map(n -> targetId.subtract(n.getId()).abs())
+                .min(Comparator.naturalOrder())
+                .orElse(null);
     }
 
     private void deleteAndDeschedule(BigInteger keyhash) {

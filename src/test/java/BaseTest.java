@@ -1,7 +1,5 @@
 import kademlia.KademliaNode;
-import kademlia.RoutingTable;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
@@ -12,6 +10,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Random;
 
+/**
+ * Base class for all unit tests <br>
+ * Extending classes test each feature in isolation from each other
+ */
 public class BaseTest {
     protected static final Logger logger = LoggerFactory.getLogger(BaseTest.class);
     protected static int BASE_PORT = 10_000;

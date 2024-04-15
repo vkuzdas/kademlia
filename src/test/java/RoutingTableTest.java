@@ -2,7 +2,6 @@ import kademlia.KBucket;
 import kademlia.KademliaNode;
 import kademlia.NodeReference;
 import kademlia.RoutingTable;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigInteger;

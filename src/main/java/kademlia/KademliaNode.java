@@ -17,8 +17,6 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Consumer;
-import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 import static kademlia.Util.*;
@@ -34,18 +32,18 @@ public class KademliaNode {
     /**
      * Local data storage
      */
-    private final Map<BigInteger, String> localData = Collections.synchronizedMap(new HashMap<>());
+    private final Map<BigInteger, String> localData = new HashMap<>();
 
     /**
      * Republish task handle for cancellation/rescheduling
      */
-    private final Map<BigInteger, ScheduledFuture<?>> republishTasks = Collections.synchronizedMap(new HashMap<>());
+    private final Map<BigInteger, ScheduledFuture<?>> republishTasks = new HashMap<>();
 
     // TODO: Expiration goes against single node publish optimization?
     /**
      * Expiration task handle for cancellation/rescheduling
      */
-    private final Map<BigInteger, ScheduledFuture<?>> expireTasks = Collections.synchronizedMap(new HashMap<>());
+    private final Map<BigInteger, ScheduledFuture<?>> expireTasks = new HashMap<>();
 
     /**
      * Refresh k-bucket that have not been queried in the last refreshInterval
@@ -235,19 +233,26 @@ public class KademliaNode {
         }
     }
 
+    /**
+     * Schedule refresh for all K-buckets
+     */
     private void startRefreshing() {
-        for (int i = 0; i < ID_LENGTH; i++) {
-            final int finalI = i;
-            ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(finalI), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
-            refreshTasks.put(i, refreshTimer);
-        }
+        lockWrapper(() -> {
+            for (int i = 0; i < ID_LENGTH; i++) {
+                final int finalI = i;
+                ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(finalI), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
+                refreshTasks.put(i, refreshTimer);
+            }
+        });
     }
 
     private void descheduleAll() {
-        republishTasks.forEach((k, v) -> v.cancel(true));
-        refreshTasks.forEach((k, v) -> v.cancel(true));
-        expireTasks.forEach((k, v) -> v.cancel(true));
-        executor.shutdownNow();
+        lockWrapper(() -> {
+            republishTasks.forEach((k, v) -> v.cancel(true));
+            refreshTasks.forEach((k, v) -> v.cancel(true));
+            expireTasks.forEach((k, v) -> v.cancel(true));
+            executor.shutdownNow();
+        });
     }
 
 
@@ -260,7 +265,7 @@ public class KademliaNode {
      * Finally, J will refresh all K-buckets further away than the B's K-bucket
      */
     public void join(NodeReference bootstrap) throws IOException {
-        startServer();
+        initKademlia();
 
         logger.warn("[{}]  Joining KadNetwork!", self);
 
@@ -286,7 +291,6 @@ public class KademliaNode {
         for (int i = bootstrapIndex+1; i < ID_LENGTH; i++) {
             refreshBucket(i);
         }
-        startRefreshing();
         logger.warn("[{}]  Joined KadNetwork!", self);
     }
 
@@ -529,7 +533,7 @@ public class KademliaNode {
         BigInteger keyHash = getId(key);
 
         if(routingTable.getSize() == 0) {
-            localData.remove(keyHash);
+            lockWrapper(() -> localData.remove(keyHash));
             return;
         }
 
@@ -626,40 +630,53 @@ public class KademliaNode {
         return desynchronizeRepublishInterval ? simulatedNetworkDelay + republishInterval.toMillis() : republishInterval.toMillis();
     }
 
+    /**
+     * Saves key to local storage and schedules the key for republishing and expiration
+     */
     private void putAndSchedule(BigInteger keyHash, String value) {
-        localData.put(keyHash, value);
+        lockWrapper(() -> {
+            localData.put(keyHash, value);
 
-        ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
-        republishTasks.put(keyHash, republishTimer);
+            ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
+            republishTasks.put(keyHash, republishTimer);
 
-        Runnable expireTask = () -> {
+            ScheduledFuture<?> expireTimer = executor.schedule(getExpireTask(keyHash), expireInterval.toMillis(), TimeUnit.MILLISECONDS);
+            expireTasks.put(keyHash, expireTimer);
+        });
+    }
+
+    private Runnable getExpireTask(BigInteger keyHash) {
+        return () -> {
             logger.trace("[{}]  Key[{}] expired!", self, keyHash);
-            localData.remove(keyHash);
+            lockWrapper(() ->localData.remove(keyHash));
         };
-        ScheduledFuture<?> expireTimer = executor.schedule(expireTask, expireInterval.toMillis(), TimeUnit.MILLISECONDS);
-        expireTasks.put(keyHash, expireTimer);
     }
 
     private void deleteAndDeschedule(BigInteger keyhash) {
-        localData.remove(keyhash);
-        republishTasks.get(keyhash).cancel(true);
-        expireTasks.get(keyhash).cancel(true);
+        lockWrapper(() -> {
+            localData.remove(keyhash);
+            republishTasks.get(keyhash).cancel(true);
+            expireTasks.get(keyhash).cancel(true);
+        });
     }
 
+    /**
+     * Insert into K-bucket, postpone its refresh task
+     */
     private void insertIntoRoutingTable(NodeReference node) {
         int bucketIndex = routingTable.getBucketIndex(node.getId());
         routingTable.insert(node);
 
         lockWrapper(() -> {
-            if (refreshTasks.get(bucketIndex) != null) {
-                refreshTasks.get(bucketIndex).cancel(false);
-                refreshTasks.remove(bucketIndex);
-                ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(bucketIndex), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
-                refreshTasks.put(bucketIndex, refreshTimer);
-            }
+            refreshTasks.get(bucketIndex).cancel(false);
+            ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(bucketIndex), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
+            refreshTasks.replace(bucketIndex, refreshTimer);
         });
     }
 
+    /**
+     * Just a wrapper to avoid retyping annoying reentrant lock block
+     */
     private void lockWrapper(Runnable action) {
         lock.lock();
         try {

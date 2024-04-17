@@ -37,13 +37,13 @@ public class DeleteTest extends BaseTest {
         // PUT
         getRandomRunningNode().put("key1", "val1");
 
-        List<Util.Pair> pairs = getRandomRunningNode().get("key1");
-        assertEquals("val1", pairs.get(0).value);
+        String gotValue = getRandomRunningNode().get("key1");
+        assertEquals("val1", gotValue);
 
         // DELETE
         getRandomRunningNode().delete("key1");
 
-        pairs = getRandomRunningNode().get("key1");
-        pairs.forEach(pair -> assertNull(null, pair.value));
+        gotValue = getRandomRunningNode().get("key1");
+        assertNull(null, gotValue);
     }
 }

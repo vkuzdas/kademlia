@@ -41,14 +41,4 @@ public class Util {
         return calculateSHA1(address);
     }
 
-    public static final class Pair {
-
-        public final NodeReference node;
-        public final String value;
-
-        public Pair(NodeReference node, String value) {
-            this.node = node;
-            this.value = value;
-        }
-    }
 }

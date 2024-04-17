@@ -267,7 +267,7 @@ public class KademliaNode {
     public void join(NodeReference bootstrap) throws IOException {
         initKademlia();
 
-        logger.warn("[{}]  Joining KadNetwork!", self);
+//        logger.warn("[{}]  Joining KadNetwork!", self);
 
         insertIntoRoutingTable(bootstrap);
 
@@ -278,7 +278,7 @@ public class KademliaNode {
                 .setJoiningNode(self.toProto())
                 .build();
 
-        logger.debug("[{}]  JOIN - prompting boostrap node [{}] for myId lookup", self, bootstrap);
+        logger.trace("[{}]  JOIN - prompting boostrap node [{}] for myId lookup", self, bootstrap);
         Kademlia.LookupResponse response = KademliaServiceGrpc.newBlockingStub(channel).promptNodeLookup(request);
         channel.shutdown();
 
@@ -287,11 +287,11 @@ public class KademliaNode {
         // refresh all KB further away than the B's KB (refresh = lookup for random id in bucket range)
         // Note: some sources suggest to refresh all KB
         int bootstrapIndex = routingTable.getBucketIndex(bootstrap.getId());
-        logger.debug("[{}]  JOIN - initiating refresh from {}th KB", self, bootstrapIndex);
+        logger.trace("[{}]  JOIN - initiating refresh from {}th KB", self, bootstrapIndex);
         for (int i = bootstrapIndex+1; i < ID_LENGTH; i++) {
             refreshBucket(i);
         }
-        logger.warn("[{}]  Joined KadNetwork!", self);
+        logger.debug("[{}]  Joined KadNetwork!", self);
     }
 
     /**
@@ -466,25 +466,31 @@ public class KademliaNode {
     /**
      * Retrieve value associated with the key from the K-closest nodes to the keyhash
      */
-    public List<Pair> get(String key) {
+    public String get(String key) {
         BigInteger keyHash = getId(key);
 
         if(routingTable.getSize() == 0) {
-            return Collections.singletonList(new Pair(self, localData.get(keyHash)));
+            lock.lock();
+            try {
+                return localData.get(keyHash);
+            } finally {
+                lock.unlock();
+            }
         }
 
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
-        List<Pair> result = new ArrayList<>();
-        CountDownLatch latch = new CountDownLatch(kClosest.size());
+        CompletableFuture<String> future = new CompletableFuture<>();
 
         for(NodeReference node : kClosest) {
 
             if (node.equals(self)) {
-                result.add(new Pair(self, localData.get(keyHash)));
-                latch.countDown();
-                continue;
+                lock.lock();
+                try {
+                    return localData.get(keyHash);
+                } finally {
+                    lock.unlock();
+                }
             }
-
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
             Kademlia.RetrieveRequest.Builder request = Kademlia.RetrieveRequest.newBuilder()
                     .setSender(self.toProto())
@@ -494,36 +500,27 @@ public class KademliaNode {
                 @Override
                 public void onNext(Kademlia.RetrieveResponse response) {
                     if (response.getStatus() == Kademlia.Status.SUCCESS) {
-                        result.add(new Pair(node, response.getValue()));
-                    } else if (response.getStatus() == Kademlia.Status.NOT_FOUND) {
-                        result.add(new Pair(node, null));
-                    }
+                        future.complete(response.getValue());
+                    } /*else if (response.getStatus() == Kademlia.Status.NOT_FOUND) {
+                        future.complete(null);
+                    }*/
                 }
 
                 @Override
                 public void onError(Throwable t) {
                     routingTable.remove(node);
                     logger.error("[{}]  RETRIEVE: Error while finding node[{}]: {}", self, node, t.toString());
-                    latch.countDown();
                     channel.shutdown();
                 }
 
                 @Override
                 public void onCompleted() {
                     insertIntoRoutingTable(node);
-                    latch.countDown();
                     channel.shutdown();
                 }
             });
         }
-
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            logger.error("[{}]  Waiting for async calls interrupted", self, e);
-        }
-
-        return result;
+        return future.join();
     }
 
     /**
@@ -701,7 +698,7 @@ public class KademliaNode {
     ////////////////////////////////
     ///  SERVER-SIDE PROCESSING  ///
     ////////////////////////////////
-    
+
     /**
      * Server-side of Kademlia node
      */

@@ -25,10 +25,8 @@ public class PutTest extends BaseTest {
         bootstrap.put("key1", "val1");
         assertEquals(1, bootstrap.getLocalData().size());
 
-        List<Pair> pairs = bootstrap.get("key1");
-        assertEquals(1, pairs.size());
-        assertEquals("val1", pairs.get(0).value);
-        assertEquals(bootstrap.getNodeReference(), pairs.get(0).node);
+        String value = bootstrap.get("key1");
+        assertEquals("val1", value);
     }
 
     @Test
@@ -43,9 +41,10 @@ public class PutTest extends BaseTest {
 
         bootstrap.put("key1", "val1");
 
-        List<Pair> pairs = joiner.get("key1");
-        assertEquals(2, pairs.size());
+        String value = joiner.get("key1");
+        assertEquals("val1", value);
     }
+
 
     @Test
     public void testPut_nonOverlapping_random() throws IOException {
@@ -86,19 +85,10 @@ public class PutTest extends BaseTest {
         getRandomRunningNode().put(lowKey, "lowValue");
 
         // no matter the chosen node, it should return nodes placed in appropriate distance from polled key
-        List<Pair> expectHighRange = getRandomRunningNode().get(highKey);
-        List<Pair> expectLowRange = getRandomRunningNode().get(lowKey);
-
-
-
-        expectLowRange.forEach(p -> {
-            assertTrue(lowRange.contains(p.node));
-            assertEquals("lowValue", p.value);
-        });
-        expectHighRange.forEach(p -> {
-            assertTrue(highRange.contains(p.node));
-            assertEquals("highValue", p.value);
-        });
+        String expectHighVal = getRandomRunningNode().get(highKey);
+        String expectLowVal = getRandomRunningNode().get(lowKey);
+        assertEquals("lowValue", expectLowVal);
+        assertEquals("highValue", expectHighVal);
 
         for (int i = 0; i < K; i++) {
             assertEquals("lowValue", runningNodes.get(i).getLocalData().get(Util.getId(lowKey)));

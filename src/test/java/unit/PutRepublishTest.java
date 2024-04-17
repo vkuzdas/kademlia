@@ -95,16 +95,16 @@ public class PutRepublishTest extends BaseTest {
         }
         getRandomRunningNode().put("key", "value");
 
-        // the first node (id=0) should be the farthest and therefore not contain the key initially
-        assertNull(runningNodes.get(0).getLocalData().get(Util.getId("key")));
+        // the last node (id=4) should be the farthest and therefore not contain the key initially
+        assertNull(runningNodes.get(runningNodes.size()-1).getLocalData().get(Util.getId("key")));
 
         // simulate fail on one of the storing nodes
         runningNodes.get(1).shutdownKademliaNode();
         runningNodes.remove(1);
 
-        // after the republish interval, key should be present on the first
+        // after the republish interval, key should be present on the last
         // node since it is now globally one of the K XOR-closest nodes
         await().atMost((long) (1.5*republishInterval.toMillis()), TimeUnit.MILLISECONDS)
-                .untilAsserted(() -> assertNotNull(runningNodes.get(0).getLocalData().get(Util.getId("key"))));
+                .untilAsserted(() -> assertNotNull(runningNodes.get(runningNodes.size()-1).getLocalData().get(Util.getId("key"))));
     }
 }

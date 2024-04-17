@@ -335,7 +335,7 @@ public class KademliaNode {
             foundInOneIteration.addAll(k_best);
 
             k_best = foundInOneIteration.stream()
-                    .sorted(Comparator.comparing(node -> targetId.subtract(node.getId()).abs()))
+                    .sorted(Comparator.comparing(node -> targetId.xor(node.getId())))
                     .limit(K_PARAMETER)
                     .collect(Collectors.toList());
 
@@ -479,6 +479,8 @@ public class KademliaNode {
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
         CountDownLatch latch = new CountDownLatch(kClosest.size());
         ArrayList<String> arr = new ArrayList<>(kClosest.size());
+        logger.debug("[{}]  Retrieving key={} from k-closest: {}", self, key, kClosest);
+
 
         for(NodeReference node : kClosest) {
 
@@ -696,7 +698,7 @@ public class KademliaNode {
 
     private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
         return collection.stream()
-                .map(n -> targetId.subtract(n.getId()).abs())
+                .map(n -> targetId.xor(n.getId()).abs())
                 .min(Comparator.naturalOrder())
                 .orElse(null);
     }

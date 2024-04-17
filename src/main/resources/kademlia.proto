@@ -39,7 +39,7 @@ message FindNodeResponse {
 
 message RetrieveRequest {
   string key = 1;
-  NodeReference sender = 3;
+  NodeReference sender = 2;
 }
 
 message RetrieveResponse {

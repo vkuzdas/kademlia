@@ -12,11 +12,13 @@ import proto.Kademlia;
 import proto.KademliaServiceGrpc;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static kademlia.Util.*;
@@ -423,6 +425,7 @@ public class KademliaNode {
 
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
         CountDownLatch latch = new CountDownLatch(kClosest.size());
+        logger.debug("[{}]  Storing key <{},{}> on k-closest: {}", self, key, value, kClosest);
 
         for (NodeReference node : kClosest) {
             if (node.equals(self)) {
@@ -470,27 +473,15 @@ public class KademliaNode {
         BigInteger keyHash = getId(key);
 
         if(routingTable.getSize() == 0) {
-            lock.lock();
-            try {
-                return localData.get(keyHash);
-            } finally {
-                lock.unlock();
-            }
+            return lockGetWrapper(() -> localData.get(keyHash));
         }
 
         List<NodeReference> kClosest = nodeLookup(keyHash, null);
-        CompletableFuture<String> future = new CompletableFuture<>();
+        CountDownLatch latch = new CountDownLatch(kClosest.size());
+        ArrayList<String> arr = new ArrayList<>(kClosest.size());
 
         for(NodeReference node : kClosest) {
 
-            if (node.equals(self)) {
-                lock.lock();
-                try {
-                    return localData.get(keyHash);
-                } finally {
-                    lock.unlock();
-                }
-            }
             ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
             Kademlia.RetrieveRequest.Builder request = Kademlia.RetrieveRequest.newBuilder()
                     .setSender(self.toProto())
@@ -499,17 +490,17 @@ public class KademliaNode {
             KademliaServiceGrpc.newStub(channel).retrieve(request.build(), new StreamObserver<Kademlia.RetrieveResponse>() {
                 @Override
                 public void onNext(Kademlia.RetrieveResponse response) {
-                    if (response.getStatus() == Kademlia.Status.SUCCESS) {
-                        future.complete(response.getValue());
-                    } /*else if (response.getStatus() == Kademlia.Status.NOT_FOUND) {
-                        future.complete(null);
-                    }*/
+                    synchronized (arr) {
+                        arr.add(response.getValue());
+                    }
+                    latch.countDown();
                 }
 
                 @Override
                 public void onError(Throwable t) {
+                    latch.countDown();
                     routingTable.remove(node);
-                    logger.error("[{}]  RETRIEVE: Error while finding node[{}]: {}", self, node, t.toString());
+                    logger.error("[{}]  RETRIEVE: Error while finding node[{}]: {}, cause:", self, node, t.toString(), t.getCause());
                     channel.shutdown();
                 }
 
@@ -520,8 +511,14 @@ public class KademliaNode {
                 }
             });
         }
-        return future.join();
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            logger.error("[{}]  Waiting for async calls interrupted", self, e);
+        }
+        return arr.stream().filter(Objects::nonNull).filter(s -> !s.isEmpty()).findFirst().orElse(null);
     }
+
 
     /**
      * Delete key-value pair from the K-closest nodes to the keyhash
@@ -683,6 +680,15 @@ public class KademliaNode {
         }
     }
 
+    private String lockGetWrapper(Supplier<String> supplier) {
+        lock.lock();
+        try {
+            return supplier.get();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private void refreshBucket(int index) {
         logger.trace("[{}]  Refreshing bucket {}", self, index);
         nodeLookup(randomWithinBucket(index), null).forEach(this::insertIntoRoutingTable);
@@ -733,17 +739,20 @@ public class KademliaNode {
             BigInteger key = new BigInteger(request.getKey());
             String value = request.getValue();
 
-            if (!localData.containsKey(key)) {
-                putAndSchedule(key, value);
-            }
-            else {
-                // opt-1: if key exists, postpone republish
-                if (!localData.get(key).equals(value)) {
-                    localData.put(key, value);
+            lockWrapper(() -> {
+                if (!localData.containsKey(key)) {
+                    putAndSchedule(key, value);
                 }
-                republishTasks.get(key).cancel(true);
-                executor.scheduleAtFixedRate(getRepublishTask(key, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
-            }
+                else {
+                    // opt-1: if key exists, postpone republish
+                    if (!localData.get(key).equals(value)) {
+                        localData.put(key, value);
+                    }
+                    republishTasks.get(key).cancel(true);
+                    executor.scheduleAtFixedRate(getRepublishTask(key, value), getRepublishDelay(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
+                }
+            });
+
 
             responseObserver.onNext(Kademlia.StoreResponse.newBuilder().setStatus(Kademlia.Status.SUCCESS).build());
             responseObserver.onCompleted();
@@ -757,7 +766,7 @@ public class KademliaNode {
             insertIntoRoutingTable(new NodeReference(request.getSender()));
 
             BigInteger key = new BigInteger(request.getKey());
-            String value = localData.get(key);
+            String value = lockGetWrapper(() ->localData.get(key));
 
             Kademlia.RetrieveResponse response;
             if (value == null) {
@@ -810,7 +819,7 @@ public class KademliaNode {
             insertIntoRoutingTable(new NodeReference(request.getSender()));
 
             BigInteger key = new BigInteger(request.getKey());
-            String value = localData.get(key);
+            String value = lockGetWrapper(() -> localData.get(key));
 
             Kademlia.DeleteResponse response;
             if (value == null) {

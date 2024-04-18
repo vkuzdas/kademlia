@@ -387,8 +387,8 @@ public class KademliaNode {
             try {
                 latch.await();
             } catch (InterruptedException e) {
-                e.printStackTrace();
-                logger.error("[{}]  Waiting for async calls interrupted", self, e);
+//                e.printStackTrace();
+                logger.error("[{}]  Waiting for async calls interrupted during multiCast", self);
             }
 
             foundInOneIteration.addAll(found);
@@ -602,8 +602,17 @@ public class KademliaNode {
 
         lockWrapper(() -> {
             refreshTasks.get(bucketIndex).cancel(false);
-            ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(bucketIndex), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
-            refreshTasks.replace(bucketIndex, refreshTimer);
+            try {
+                ScheduledFuture<?> refreshTimer = executor.scheduleAtFixedRate(() -> refreshBucket(bucketIndex), refreshInterval.toMillis(), refreshInterval.toMillis(), TimeUnit.MILLISECONDS);
+                refreshTasks.replace(bucketIndex, refreshTimer);
+            } catch (RejectedExecutionException e) {
+                if (executor.isShutdown()) {
+                    logger.error("[{}]  Cannot schedule bucket refresh, node seems to be shut-down: {}", self, e.toString());
+                }
+                if (executor.isTerminated()) {
+                    logger.error("[{}]  Cannot schedule bucket refresh, node seems to be terminated: {}", self, e.toString());
+                }
+            }
         });
     }
 

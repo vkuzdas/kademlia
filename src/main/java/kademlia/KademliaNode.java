@@ -541,7 +541,6 @@ public class KademliaNode {
     private Runnable getRepublishTask(BigInteger keyHash, String value) {
         return () -> {
             List<NodeReference> kClosest = nodeLookup(keyHash, null);
-            kClosest.remove(self);
             CountDownLatch latch = new CountDownLatch(kClosest.size());
 
             logger.debug("[{}]  Asynchronously republishing key {} to k-closest: {}", self, keyHash, kClosest);

@@ -7,7 +7,7 @@
 
     <logger name="io.grpc" level="OFF" />
 
-    <root level="debug">
+    <root level="trace">
     <!--    TRACE = everything else -->
     <!--    DEBUG = main Kademlia operations -->
     <!--    INFO = put(), get(), delete() -->

@@ -36,7 +36,6 @@ public class PutRepublishTest extends BaseTest {
         KademliaNode.setIdLength(BITS);
 
         KademliaNode.setRepublishInterval(republishInterval);
-        KademliaNode.setDesynchronizeRepublishInterval(true);
     }
 
     /**
@@ -79,7 +78,7 @@ public class PutRepublishTest extends BaseTest {
      * Validate that key is republished on K closest nodes after specified republish interval <br>
      * 1. initialize with K+1 nodes <br>
      * 2. put key on it <br>
-     * 3. simulate fail on one of the storing node <br>
+     * 3. simulate fail on one of the storing node (not the original publisher!) <br>
      * 4. wait for republish interval <br>
      * 5. validate that key is on K XOR-closest nodes <br>
      */
@@ -93,7 +92,7 @@ public class PutRepublishTest extends BaseTest {
                 joiner.join(getRandomRunningNode().getNodeReference());
             runningNodes.add(joiner);
         }
-        getRandomRunningNode().put("key", "value");
+        runningNodes.get(2).put("key", "value");
 
         // the last node (id=4) should be the farthest and therefore not contain the key initially
         assertNull(runningNodes.get(runningNodes.size()-1).getLocalData().get(Util.getId("key")));

@@ -3,12 +3,15 @@ package unit;
 import kademlia.KademliaNode;
 import kademlia.NodeReference;
 import kademlia.Util;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static kademlia.Util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -47,6 +50,8 @@ public class PutTest extends BaseTest {
 
 
     @Test
+    @Disabled("Accidentally implemented with absolute difference distance metric assumption")
+    // TODO: implement with XOR distance metric
     public void testPut_nonOverlapping_random() throws IOException {
         KademliaNode.setIdLength(10);
         BITS = 10;

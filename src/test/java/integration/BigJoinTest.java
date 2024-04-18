@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.sql.Time;
+import java.math.BigInteger;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
@@ -15,8 +15,48 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
+
 public class BigJoinTest extends IntegrationBaseTest {
+
+    /**
+     * Put value onto bootstrap, validate that it will continuously be carried to XOR-closer nodes through republish-expire cycles
+     */
+    @Test
+    public void testConvergeRepublishOntoClosest() throws IOException {
+        BITS = 10;
+        KademliaNode.setIdLength(BITS);
+        int tExpire = 4;
+        int tRepublish = 5;
+        KademliaNode.setExpireInterval(Duration.ofSeconds(tExpire));
+        KademliaNode.setRepublishInterval(Duration.ofSeconds(tRepublish)); // no republication
+
+        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
+        runningNodes.add(bootstrap);
+        bootstrap.initKademlia();
+        String KEY = "key6";
+        BigInteger keyHash = Util.getId(KEY); // 1010000000
+        bootstrap.put(KEY, "val1");
+
+        assertEquals(1, bootstrap.getLocalData().size());
+
+        for (int i = 0; i < K; i++) {
+            BigInteger nextId = keyHash.setBit(i); // this way, the id will be XOR-closer to keyhash
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, nextId);
+            joiner.join(bootstrap.getNodeReference());
+            runningNodes.add(joiner);
+        }
+
+        await().atMost(tRepublish, TimeUnit.SECONDS).untilAsserted(() -> {
+            for (int i = 1; i < K+1; i++) {
+                KademliaNode curr = runningNodes.get(i);
+                assertEquals(1, curr.getLocalData().size());
+                assertTrue(getGloballyXORClosest(KEY).contains(curr.getNodeReference()));
+            }
+            assertEquals(0, bootstrap.getLocalData().size());
+            assertFalse(getGloballyXORClosest(KEY).contains(bootstrap.getNodeReference()));
+        });
+    }
 
     @Test
     public void testPutGetExpire50() throws IOException {
@@ -66,15 +106,15 @@ public class BigJoinTest extends IntegrationBaseTest {
         }
         for (int i = 0; i < 100; i++) {
             getRandomRunningNode().put("key_"+i,"val_"+i);
-            logger.debug("globally closest: {}", globallyXORClosest("key_"+i));
+            logger.debug("globally closest: {}", getGloballyXORClosest("key_"+i));
         }
         for (int i = 0; i < 100; i++) {
             assertEquals("val_"+i, getRandomRunningNode().get("key_"+i));
-            logger.debug("globally closest: {}", globallyXORClosest("key_"+i));
+            logger.debug("globally closest: {}", getGloballyXORClosest("key_"+i));
         }
         for (int i = 0; i < 100; i++) {
             getRandomRunningNode().delete("key_"+i);
-            logger.debug("globally closest: {}", globallyXORClosest("key_"+i));
+            logger.debug("globally closest: {}", getGloballyXORClosest("key_"+i));
         }
         runningNodes.forEach(node -> {
             if (!node.getLocalData().isEmpty()) {
@@ -85,7 +125,7 @@ public class BigJoinTest extends IntegrationBaseTest {
     }
 
 
-    private List<NodeReference> globallyXORClosest(String keyHash) {
+    private List<NodeReference> getGloballyXORClosest(String keyHash) {
         return runningNodes.stream()
                 .map(KademliaNode::getNodeReference)
                 .sorted(Comparator.comparing(node -> Util.getId(keyHash).xor(node.getId())))

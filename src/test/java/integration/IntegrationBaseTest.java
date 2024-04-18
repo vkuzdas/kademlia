@@ -15,10 +15,6 @@ import java.util.Random;
 
 public class IntegrationBaseTest {
 
-    /**
-     * Suggestion of Integration tests to implement:
-      */
-
 
     protected static final Logger logger = LoggerFactory.getLogger(BaseTest.class);
     protected static int BASE_PORT = 11_000;

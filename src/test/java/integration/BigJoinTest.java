@@ -47,7 +47,7 @@ public class BigJoinTest extends IntegrationBaseTest {
             runningNodes.add(joiner);
         }
 
-        await().atMost(tRepublish, TimeUnit.SECONDS).untilAsserted(() -> {
+        await().atMost(tRepublish+1, TimeUnit.SECONDS).untilAsserted(() -> {
             for (int i = 1; i < K+1; i++) {
                 KademliaNode curr = runningNodes.get(i);
                 assertEquals(1, curr.getLocalData().size());

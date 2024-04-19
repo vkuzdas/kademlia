@@ -124,6 +124,53 @@ public class BigJoinTest extends IntegrationBaseTest {
         });
     }
 
+// TODO: fail random node
+
+    /**
+     * Fail of original publisher should result in expiration of published key
+     */
+    @Test
+    public void testPublisherFail() throws IOException, InterruptedException {
+        BITS = 160;
+        KademliaNode.setIdLength(BITS);
+        int tRepublish = 5;
+        KademliaNode.setRepublishInterval(Duration.ofSeconds(tRepublish));
+        int tRefresh = 7;
+        KademliaNode.setRefreshInterval(Duration.ofSeconds(tRefresh));
+        int tExpire = 7;
+        KademliaNode.setExpireInterval(Duration.ofSeconds(tExpire));
+
+
+        KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++);
+        runningNodes.add(bootstrap);
+        bootstrap.initKademlia();
+
+        bootstrap.put("KEY", "val1");
+
+        assertEquals(1, bootstrap.getLocalData().size());
+
+        for (int i = 0; i < K-1; i++) {
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++);
+            joiner.join(getRandomRunningNode().getNodeReference());
+            runningNodes.add(joiner);
+        }
+
+        await().atMost(tRepublish+1, TimeUnit.SECONDS).untilAsserted(() -> {
+            for (KademliaNode node : runningNodes) {
+                assertEquals(1, node.getLocalData().size());
+            }
+        });
+
+        bootstrap.shutdownKademliaNode();
+        runningNodes.remove(bootstrap);
+
+
+        await().atMost(tExpire+1, TimeUnit.SECONDS).untilAsserted(() -> {
+            for (KademliaNode node : runningNodes) {
+                assertEquals(0, node.getLocalData().size());
+            }
+        });
+    }
 
     private List<NodeReference> getGloballyXORClosest(String keyHash) {
         return runningNodes.stream()

@@ -1,10 +1,7 @@
 package kademlia;
 
 import com.google.common.annotations.VisibleForTesting;
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
-import io.grpc.Server;
-import io.grpc.ServerBuilder;
+import io.grpc.*;
 import io.grpc.stub.StreamObserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -369,7 +366,16 @@ public class KademliaNode {
 
                     @Override
                     public void onError(Throwable throwable) {
-                        logger.error("[{}]  multicastFindNode: Error while finding node[{}]: {}", self, recipient, throwable.toString());
+                        if (throwable instanceof StatusRuntimeException) {
+                            StatusRuntimeException e = (StatusRuntimeException) throwable;
+                            if (e.getStatus().getCode() == Status.Code.UNAVAILABLE) {
+                                logger.error("[{}]  asyncFindNode: Node is unresponsive, will delete [{}]", self, recipient);
+                            } else {
+                                logger.error("[{}]  asyncFindNode: Unexpected code when contacting node [{}]: {}", self, recipient, e.getStatus());
+                            }
+                        } else {
+                            logger.error("[{}]  asyncFindNode: Unexpected exception when contacting node [{}]: {}", self, recipient, throwable.toString());
+                        }
                         failedNodes.add(recipient);
                         latch.countDown();
                         channel.shutdown();

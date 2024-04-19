@@ -134,8 +134,11 @@ public class KademliaNode {
     }
 
     public static void setK(int k) {
-        if (k < 1 || k > 10) {
-            throw new IllegalArgumentException("K must be between 1 and 10");
+        if (k < 1 || k > 20) {
+            throw new IllegalArgumentException("K must be between 1 and 20");
+        }
+        if (k > ID_LENGTH) {
+            throw new IllegalArgumentException("K must be <= ID length");
         }
         KademliaNode.K_PARAMETER = k;
     }

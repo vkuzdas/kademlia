@@ -13,7 +13,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Random;
 
-public class IntegrationBaseTest {
+public class BigTestBase {
 
 
     protected static final Logger logger = LoggerFactory.getLogger(BaseTest.class);

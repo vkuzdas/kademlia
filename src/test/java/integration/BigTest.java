@@ -17,10 +17,37 @@ import java.util.stream.Collectors;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class IntegrationTest extends IntegrationBaseTest {
+public class BigTest extends BigTestBase {
+
 
     /**
-     * Put value onto bootstrap, validate that it will continuously be carried to XOR-closer nodes through republish-expire cycles
+     * If you want to test-run for a certain amount of time, just put Thread.sleep() at the end of the test
+     */
+    @Test
+    @Disabled("Manual run, dont waste CI resources")
+    public void testCustomRun() throws IOException, InterruptedException {
+        KademliaNode.setK(K);
+        KademliaNode.setAlpha(ALPHA);
+        KademliaNode.setIdLength(160);
+        KademliaNode.setRepublishInterval(Duration.ofSeconds(7));
+        KademliaNode.setRefreshInterval(Duration.ofSeconds(7));
+        KademliaNode.setExpireInterval(Duration.ofSeconds(7));
+
+
+        for (int i = 0; i < K+1; i++) {
+            KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.valueOf(i));
+            if (runningNodes.isEmpty())
+                joiner.initKademlia();
+            else
+                joiner.join(getRandomRunningNode().getNodeReference());
+            runningNodes.add(joiner);
+        }
+
+        Thread.sleep(60000);
+    }
+
+    /**
+     * Put value onto bootstrap, validate that it will be carried to XOR-closer nodes through republish-expire
      */
     @Test
     public void testConvergeRepublishOntoClosest() throws IOException {

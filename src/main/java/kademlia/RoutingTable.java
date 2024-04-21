@@ -52,6 +52,9 @@ public class RoutingTable {
     public List<NodeReference> findKClosest(BigInteger targetId) {
         lock.lock();
         try {
+            if (buckets.get(getBucketIndex(targetId)).isFull()) {
+                return buckets.get(getBucketIndex(targetId)).toList();
+            }
             return buckets.stream()
                     .filter(b -> !b.isEmpty())
                     .flatMap(KBucket::toStream)

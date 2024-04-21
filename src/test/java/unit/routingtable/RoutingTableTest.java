@@ -1,10 +1,11 @@
-package unit;
+package unit.routingtable;
 
 import kademlia.KBucket;
 import kademlia.KademliaNode;
 import kademlia.NodeReference;
 import kademlia.RoutingTable;
 import org.junit.jupiter.api.Test;
+import unit.BaseTest;
 
 import java.math.BigInteger;
 import java.util.ArrayList;

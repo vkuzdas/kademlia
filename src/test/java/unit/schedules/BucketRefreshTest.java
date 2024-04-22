@@ -1,8 +1,9 @@
-package unit;
+package unit.schedules;
 
 import kademlia.KademliaNode;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import unit.BaseTest;
 
 import java.io.IOException;
 import java.time.Duration;

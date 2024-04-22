@@ -1,8 +1,9 @@
-package unit;
+package unit.join;
 
 import kademlia.KademliaNode;
 import kademlia.NodeReference;
 import org.junit.jupiter.api.Test;
+import unit.BaseTest;
 
 import java.io.IOException;
 import java.math.BigInteger;

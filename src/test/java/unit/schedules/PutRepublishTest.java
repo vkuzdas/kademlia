@@ -1,10 +1,11 @@
-package unit;
+package unit.schedules;
 
 import kademlia.KademliaNode;
 import kademlia.Util;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
+import unit.BaseTest;
 
 import java.io.IOException;
 import java.math.BigInteger;

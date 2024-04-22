@@ -289,7 +289,6 @@ public class BigTest extends BigTestBase {
     }
 
     @Test
-    @Disabled("Put, get, delete don't return globally closest nodes. Delete therefore does not guarantee global key deletion.")
     public void test50() throws IOException {
         BITS = 20;
         KademliaNode.setIdLength(BITS);
@@ -304,15 +303,12 @@ public class BigTest extends BigTestBase {
         }
         for (int i = 0; i < 100; i++) {
             getRandomRunningNode().put("key_"+i,"val_"+i);
-            logger.debug("globally closest: {}", getGloballyXORClosest("key_"+i));
         }
         for (int i = 0; i < 100; i++) {
             assertEquals("val_"+i, getRandomRunningNode().get("key_"+i));
-            logger.debug("globally closest: {}", getGloballyXORClosest("key_"+i));
         }
         for (int i = 0; i < 100; i++) {
             getRandomRunningNode().delete("key_"+i);
-            logger.debug("globally closest: {}", getGloballyXORClosest("key_"+i));
         }
         runningNodes.forEach(node -> {
             if (!node.getLocalData().isEmpty()) {

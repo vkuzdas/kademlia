@@ -67,6 +67,30 @@ public class RoutingTable {
 
     }
 
+
+    /**
+     * Pick ALPHA nodes from closest non-empty k-bucket (or, if that bucket has fewer than ALPHA entries, just take the ALPHA closest nodes you know of)
+     */
+    public List<NodeReference> findAlphaClosest(BigInteger targetId) {
+        lock.lock();
+        try {
+            if (buckets.get(getBucketIndex(targetId)).isFull()) {
+                return buckets.get(getBucketIndex(targetId)).toStream()
+                        .sorted(Comparator.comparing(node -> targetId.xor(node.getId())))
+                        .limit(ALPHA_PARAMETER)
+                        .collect(Collectors.toList());
+            }
+            return buckets.stream()
+                    .filter(b -> !b.isEmpty())
+                    .flatMap(KBucket::toStream)
+                    .sorted(Comparator.comparing(node -> targetId.xor(node.getId())))
+                    .limit(ALPHA_PARAMETER)
+                    .collect(Collectors.toList());
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /**
      * Insert or updateIfPresent
      * @param newNode

@@ -94,4 +94,13 @@ public class KBucket {
     public boolean remove(NodeReference toRemove) {
         return nodes.remove(toRemove);
     }
+
+    public String toString() {
+        if (nodes.isEmpty()) return "";
+        String r = "";
+        for (NodeReference n : nodes) {
+            r += n + " ";
+        }
+        return r;
+    }
 }

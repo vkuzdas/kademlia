@@ -286,7 +286,7 @@ public class KademliaNode {
      * @param joiningNode - node that is joining the network, null if it's a regular lookup
      * @return List of nodes that were found during the lookup <br>
      */
-    private List<NodeReference> nodeLookup(BigInteger targetId, Kademlia.NodeReference joiningNode) {
+    private List<NodeReference> nodeLookup__(BigInteger targetId, Kademlia.NodeReference joiningNode) {
         logger.trace("[{}]  initiating nodeLookup", self);
 
         if (routingTable.getSize() == 0) {
@@ -294,13 +294,16 @@ public class KademliaNode {
             return new ArrayList<>();
         }
 
-        List<NodeReference> k_best = routingTable.findKClosest(targetId);
+        List<NodeReference> k_best = routingTable.findAlphaClosest(targetId);
+        logger.trace("[{}]  Initial alfa best: {}", self, k_best);
         HashSet<NodeReference> allFoundNodes = new HashSet<>(k_best);
         Set<NodeReference> failedNodes = new HashSet<>();
+        Set<NodeReference> bestAndProbed = new HashSet<>();
 
         while (true) { // while better results are coming
 
             Set<NodeReference> foundInOneIteration = multicastFindNode(new ArrayList<>(k_best), targetId, joiningNode, failedNodes);
+            logger.trace("[{}]  FoundInOneIteration: {}", self, foundInOneIteration);
             if (!failedNodes.isEmpty()) {
                 for (NodeReference failedNode : failedNodes) {
                     routingTable.remove(failedNode);
@@ -330,13 +333,108 @@ public class KademliaNode {
         }
 
         if (joiningNode != null) {
-            logger.trace("[{}]  Node lookup finished (KB was not full)", self);
+            logger.trace("[{}]  Node lookup finished w joining node", self);
             // all nodes found during the lookup = all nodes into which joiningNode was inserted to
             return new ArrayList<>(allFoundNodes);
         }
 
-        logger.trace("[{}]  Node lookup finished (whole KB returned)", self);
+        logger.trace("[{}]  Node lookup finished w/o joining node", self);
         return k_best;
+    }
+
+    /**
+     * Locate K globally-closest nodes to the targetId <br>
+     * If joiningNode is not null, all nodes found during the lookup are returned
+     * @param joiningNode - node that is joining the network, null if it's a regular lookup
+     * @return List of nodes that were found during the lookup <br>
+     */
+    private List<NodeReference> nodeLookup(BigInteger targetId, Kademlia.NodeReference joiningNode) {
+        logger.trace("[{}]  initiating nodeLookup", self);
+
+        if (routingTable.getSize() == 0) {
+            logger.trace("[{}]  My routing table is empty", self);
+            return new ArrayList<>();
+        }
+
+        Shortlist SL = new Shortlist(routingTable.findAlphaClosest(targetId));
+
+        while (SL.hasUnqueried()) {
+            multicastFindNode(SL, targetId, joiningNode);
+        }
+        SL.getOffline().forEach(routingTable::remove);
+
+        return SL.getKBestQueried(targetId, K_PARAMETER);
+    }
+
+    /**
+     *  Return K number of closest nodes to the given ID from the given colletion
+     */
+    public List<NodeReference> selectKClosest(Collection<NodeReference> col, BigInteger targetId) {
+        return col.stream()
+                .sorted(Comparator.comparing(node -> targetId.xor(node.getId())))
+                .limit(K_PARAMETER)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Makes at most ALPHA concurrent calls (depends on the size of toQuery)
+     * Returns all nodes found during the lookup
+     */
+    private void multicastFindNode(Shortlist SL, BigInteger targetId, Kademlia.NodeReference joiningNode) {
+        List<NodeReference> toQuery = SL.pollAlphaNodesForQuery();
+
+        CountDownLatch latch = new CountDownLatch(toQuery.size());
+        Set<NodeReference> fromRecipient = Collections.synchronizedSet(new HashSet<>());
+
+        for (NodeReference recipient : toQuery) {
+
+            ManagedChannel channel = ManagedChannelBuilder.forTarget(recipient.getAddress()).usePlaintext().build();
+            Kademlia.FindNodeRequest.Builder request = Kademlia.FindNodeRequest.newBuilder()
+                    .setTargetId(targetId.toString())
+                    .setSender(self.toProto());
+            if (joiningNode != null)
+                request.setJoiningNode(joiningNode);
+            KademliaServiceGrpc.newStub(channel).findNode(request.build(), new StreamObserver<Kademlia.FindNodeResponse>() {
+                @Override
+                public void onNext(Kademlia.FindNodeResponse findNodeResponse) {
+                    findNodeResponse.getKClosestList().stream().map(NodeReference::new).forEach(fromRecipient::add);
+                }
+
+                @Override
+                public void onError(Throwable throwable) {
+                    if (throwable instanceof StatusRuntimeException) {
+                        StatusRuntimeException e = (StatusRuntimeException) throwable;
+                        if (e.getStatus().getCode() == Status.Code.UNAVAILABLE) {
+                            logger.error("[{}]  asyncFindNode: Node is unresponsive, will delete [{}]", self, recipient);
+                        } else {
+                            logger.error("[{}]  asyncFindNode: Unexpected code when contacting node [{}]: {}", self, recipient, e.getStatus());
+                        }
+                    } else {
+                        logger.error("[{}]  asyncFindNode: Unexpected exception when contacting node [{}]: {}", self, recipient, throwable.toString());
+                    }
+                    SL.addOffline(recipient);
+
+                    latch.countDown();
+                    channel.shutdown();
+                }
+
+                @Override
+                public void onCompleted() {
+                    insertIntoRoutingTable(recipient);
+
+                    latch.countDown();
+                    channel.shutdown();
+                }
+            });
+        }
+
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            logger.error("[{}]  Waiting for async calls interrupted during multiCast", self);
+        }
+
+        fromRecipient.forEach(SL::addToQuery);
     }
 
     /**
@@ -416,18 +514,18 @@ public class KademliaNode {
                 localData.put(keyHash, value);
                 ScheduledFuture<?> expireTimer = executor.schedule(getExpireTask(keyHash), expireInterval.toMillis(), TimeUnit.MILLISECONDS);
                 expireTasks.put(keyHash, expireTimer);
-                ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), republishInterval.toMillis(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
+                ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(key, keyHash, value), republishInterval.toMillis(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
                 republishTasks.put(keyHash, republishTimer);
             });
             return;
         }
 
         lockWrapper(() -> {
-            ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(keyHash, value), republishInterval.toMillis(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
+            ScheduledFuture<?> republishTimer = executor.scheduleAtFixedRate(getRepublishTask(key, keyHash, value), republishInterval.toMillis(), republishInterval.toMillis(), TimeUnit.MILLISECONDS);
             republishTasks.put(keyHash, republishTimer);
         });
 
-        Runnable republishTask = getRepublishTask(keyHash, value);
+        Runnable republishTask = getRepublishTask(key, keyHash, value);
         republishTask.run();
     }
 
@@ -489,9 +587,7 @@ public class KademliaNode {
 
     /**
      * Delete key-value pair from the K-closest nodes to the keyhash. <br>
-     * Does not guarantee global deletion. Wait for expiration to ensure global deletion.
      */
-    @Deprecated
     public void delete(String key) {
         BigInteger keyHash = getId(key);
 
@@ -547,12 +643,12 @@ public class KademliaNode {
 
     ////  Utility methods  ////
 
-    private Runnable getRepublishTask(BigInteger keyHash, String value) {
+    private Runnable getRepublishTask(String key, BigInteger keyHash, String value) {
         return () -> {
             List<NodeReference> kClosest = nodeLookup(keyHash, null);
             CountDownLatch latch = new CountDownLatch(kClosest.size());
 
-            logger.debug("[{}]  Asynchronously republishing key {} to k-closest: {}", self, keyHash, kClosest);
+            logger.debug("[{}]  Asynchronously republishing key {} to k-closest: {}", self, key, kClosest);
 
             for (NodeReference node : kClosest) {
                 ManagedChannel channel = ManagedChannelBuilder.forTarget(node.getAddress()).usePlaintext().build();
@@ -653,7 +749,7 @@ public class KademliaNode {
 
     private BigInteger getBestDistance(Collection<NodeReference> collection, BigInteger targetId) {
         return collection.stream()
-                .map(n -> targetId.xor(n.getId()).abs())
+                .map(n -> targetId.xor(n.getId()))
                 .min(Comparator.naturalOrder())
                 .orElse(null);
     }
@@ -749,12 +845,14 @@ public class KademliaNode {
          */
         @Override
         public void findNode(Kademlia.FindNodeRequest request, StreamObserver<Kademlia.FindNodeResponse> responseObserver) {
-            insertIntoRoutingTable(new NodeReference(request.getSender()));
 //            logger.trace("[{}]  Received FIND_NODE rpc", self);
+//            insertIntoRoutingTable(new NodeReference(request.getSender()));
 
             BigInteger targetId = new BigInteger(request.getTargetId());
             List<NodeReference> kClosest = routingTable.findKClosest(targetId);
+//            logger.trace("[{}]  Out of all my nodes {}, returning k closest: {} nodes to {}", self, routingTable.buckets, kClosest, targetId);
 
+            insertIntoRoutingTable(new NodeReference(request.getSender()));
             if (request.hasJoiningNode()) {
                 insertIntoRoutingTable(new NodeReference(request.getJoiningNode()));
             }

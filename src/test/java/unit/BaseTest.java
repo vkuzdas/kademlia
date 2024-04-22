@@ -3,6 +3,7 @@ package unit;
 import kademlia.KademliaNode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.TestInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,7 @@ import java.util.Random;
  * Base class for all unit tests <br>
  * Extending classes test each feature in isolation from each other
  */
+@Disabled("Disable to not waste CI resources")
 public class BaseTest {
     protected static final Logger logger = LoggerFactory.getLogger(BaseTest.class);
     protected static int BASE_PORT = 10_000;

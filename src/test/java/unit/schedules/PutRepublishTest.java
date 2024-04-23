@@ -44,13 +44,12 @@ public class PutRepublishTest extends BaseTest {
      * the key-value pair was originally published"</i> <br><br>
      * Validate that key is republished on K closest nodes after specified republish interval <br>
      * 1. put a key on a Single node <br>
-     * 2. put key on it <br>
-     * 3. join with other nodes <br>
-     * 4. wait for republish interval <br>
-     * 5. validate that key is on K XOR-closest nodes <br>
+     * 2. join with other node <br>
+     * 3. wait for republish interval <br>
+     * 4. validate that key is on newly joined <br>
      */
     @Test
-    public void testPutJoinRepublish() throws IOException, InterruptedException {
+    public void testPutJoinRepublish() throws IOException {
         Duration interval = Duration.ofSeconds(3);
         KademliaNode.setRepublishInterval(interval);
 
@@ -61,13 +60,11 @@ public class PutRepublishTest extends BaseTest {
         KademliaNode joiner = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ONE);
         joiner.join(bootstrap.getNodeReference());
 
+        // no data before republish
         assertNull(joiner.getLocalData().get(Util.getId("key")));
 
-        // wait for republish interval
-        Thread.sleep(interval.toMillis());
-
-        await().atMost(interval.toMillis(), TimeUnit.MILLISECONDS)
-                .untilAsserted(() -> {
+        // has data after republish
+        await().atMost(interval.toMillis(), TimeUnit.MILLISECONDS).untilAsserted(() -> {
                     assertEquals("value", joiner.getLocalData().get(Util.getId("key")));
                 });
     }
@@ -78,7 +75,7 @@ public class PutRepublishTest extends BaseTest {
      * <i>"Some of the k nodes that initially get a key-value pair when it is published may leave the network."</i> <br><br>
      * Validate that key is republished on K closest nodes after specified republish interval <br>
      * 1. initialize with K+1 nodes <br>
-     * 2. put key on it <br>
+     * 2. put a key into DHT <br>
      * 3. simulate fail on one of the storing node (not the original publisher!) <br>
      * 4. wait for republish interval <br>
      * 5. validate that key is on K XOR-closest nodes <br>

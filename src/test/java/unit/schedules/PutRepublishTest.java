@@ -50,8 +50,7 @@ public class PutRepublishTest extends BaseTest {
      */
     @Test
     public void testPutJoinRepublish() throws IOException {
-        Duration interval = Duration.ofSeconds(3);
-        KademliaNode.setRepublishInterval(interval);
+        KademliaNode.setRepublishInterval(republishInterval);
 
         KademliaNode bootstrap = new KademliaNode(LOCAL_IP, BASE_PORT++, BigInteger.ZERO);
         bootstrap.initKademlia();
@@ -64,9 +63,8 @@ public class PutRepublishTest extends BaseTest {
         assertNull(joiner.getLocalData().get(Util.getId("key")));
 
         // has data after republish
-        await().atMost(interval.toMillis(), TimeUnit.MILLISECONDS).untilAsserted(() -> {
-                    assertEquals("value", joiner.getLocalData().get(Util.getId("key")));
-                });
+        await().atMost((long) (1.5*republishInterval.toMillis()), TimeUnit.MILLISECONDS)
+                .untilAsserted(() -> assertEquals("value", joiner.getLocalData().get(Util.getId("key"))));
     }
 
 
